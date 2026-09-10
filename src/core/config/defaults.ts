@@ -10,7 +10,19 @@ import type { Config } from './schema';
 export const defaultConfig = {
   remotePath: './',
   uploadOnSave: false,
-  useTempFile: false,
+  /**
+   * Stage uploads through a temporary file and move them into place.
+   *
+   * On by default now. Writing straight to the target truncates it the instant
+   * the transfer starts, so a dropped connection leaves a shortened file on the
+   * server -- the previous version is gone and the new one never arrived. That
+   * is the worst failure mode a sync tool has, and it was the default.
+   *
+   * The cost is a second file in the directory for the duration of the transfer
+   * and one rename. Where the directory does not permit creating one, the
+   * transfer falls back to writing directly and says so.
+   */
+  useTempFile: true,
   openSsh: false,
   downloadOnOpen: false,
 

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Readable } from 'stream';
 import * as fileOperations from './fileBaseOperations';
 import { FileSystem, FileType } from './fs';
@@ -112,6 +113,28 @@ export default class TransferTask implements Task {
    * that have not started yet is the wrong way round: those are the easiest
    * ones to stop.
    */
+  /**
+   * Where to stage an upload before moving it into place.
+   *
+   * Unique per attempt: upstream used a fixed `<target>.new`, so two transfers
+   * to the same path -- two profiles, a retry overlapping its predecessor --
+   * wrote to one staging file and produced a corrupt result with no error.
+   *
+   * Named like rsync's: a leading dot hides it on Unix, and the suffix says
+   * plainly what it is, so debris from a killed process is recognisable rather
+   * than mysterious.
+   */
+  private _tempTargetPath(target: string): string {
+    const resolver = (this._targetFs as unknown as {
+      pathResolver: { dirname(p: string): string; basename(p: string): string; join(a: string, b: string): string };
+    }).pathResolver;
+
+    const dir = resolver.dirname(target);
+    const name = resolver.basename(target);
+    const unique = `${process.pid.toString(36)}${randomBytes(4).toString('hex')}`;
+    return resolver.join(dir, `.${name}.syncx-${unique}.tmp`);
+  }
+
   cancel() {
     if (this._cancelled) return;
     this._cancelled = true;
@@ -128,13 +151,33 @@ export default class TransferTask implements Task {
     // Cancelled while queued: do not start moving bytes.
     if (this._cancelled) return;
 
+    // Staging files must be cleaned up on *every* failure path, including one
+    // that happens while opening -- the target descriptor and the source stream
+    // are opened together, so the staging file can exist before the transfer
+    // body is ever entered.
+    const staged: string[] = [];
+    try {
+      await this._runTransfer(staged);
+    } catch (error) {
+      for (const path of staged) {
+        try {
+          await this._targetFs.unlink(path);
+        } catch {
+          // It may never have been created.
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async _runTransfer(staged: string[]) {
+
     const src = this._srcFsPath;
     const target = this._targetFsPath;
     const srcFs = this._srcFs;
     const targetFs = this._targetFs;
     const {
       perserveTargetMode,
-      useTempFile,
       openSsh,
       fallbackMode,
       atime,
@@ -145,7 +188,10 @@ export default class TransferTask implements Task {
     let mode = filePerm ? parseInt(String(filePerm), 8) : this._TransferOption.mode;
     let targetFd; // Destination file
     let uploadFd; // Temp file or destination file when no temp file is used
-    const uploadTarget = target + (useTempFile ? ".new" : "");
+    // Not const: both can be stood down if the directory refuses a staging file.
+    let useTempFile = this._TransferOption.useTempFile !== false;
+    let uploadTarget = useTempFile ? this._tempTargetPath(target) : target;
+    if (useTempFile) staged.push(uploadTarget);
 
     // Use mode first.
     // Then check perserveTargetMode and fallback to fallbackMode if fail to get mode of target
@@ -181,7 +227,21 @@ export default class TransferTask implements Task {
     } else {
       [this._handle, uploadFd] = await Promise.all([
         srcFs.get(src),
-        targetFs.open(uploadTarget, 'w'),
+        targetFs.open(uploadTarget, 'w').catch(error => {
+          if (!useTempFile) throw error;
+          // Some directories allow overwriting an existing file but not
+          // creating a new one. Falling back keeps those working, at the cost
+          // of the atomicity the staging file was buying -- so it is logged,
+          // not swallowed.
+          logger.warn(
+            `cannot stage ${uploadTarget} (${(error as Error).message}); ` +
+              'writing directly to the target, which is not atomic'
+          );
+          useTempFile = false;
+          uploadTarget = target;
+          staged.length = 0;
+          return targetFs.open(target, 'w');
+        }),
       ]);
     }
 
@@ -212,19 +272,32 @@ export default class TransferTask implements Task {
       }
 
       if (useTempFile) {
-        logger.info("moving from: " + target + ".new" + " to: " + target);
-        if(openSsh) {
+        logger.info(`moving ${uploadTarget} to ${target}`);
+        if (openSsh) {
           await targetFs.renameAtomic(uploadTarget, target);
         } else {
+          // Rename first. On POSIX this replaces the target in one step, which
+          // is the entire point of staging. Upstream unlinked the target first
+          // and then renamed, which opens a window where the file does not
+          // exist at all -- the opposite of atomic, and visible to anything
+          // reading from the server at that moment.
           try {
-            await targetFs.unlink(target);
-          } catch(error) {
-            // Just ignore
+            await targetFs.rename(uploadTarget, target);
+          } catch (error) {
+            // Windows refuses to rename onto an existing file, and some SFTP
+            // servers do too. Removing first is the fallback, not the plan.
+            try {
+              await targetFs.unlink(target);
+            } catch {
+              // Not there after all.
+            }
+            await targetFs.rename(uploadTarget, target);
           }
-          await targetFs.rename(uploadTarget, target);
         }
       }
 
+      // Moved into place: there is nothing left to clean up.
+      staged.length = 0;
     } finally {
       await targetFs.close(uploadFd);
     }

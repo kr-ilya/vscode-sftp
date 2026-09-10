@@ -95,25 +95,62 @@ describe('timestamps', () => {
   });
 });
 
-describe('the temp-file path', () => {
-  test('leaves no temp file behind on success', async () => {
+describe('staging through a temporary file', () => {
+  test('is on by default', async () => {
+    // Writing straight to the target truncates it the instant the transfer
+    // starts, so a dropped connection leaves a shortened file and the previous
+    // version gone. That was the default.
     await fse.outputFile(at('src.txt'), 'content');
-    await task(at('src.txt'), at('dst.txt'), { useTempFile: true }).run();
-
+    await task(at('src.txt'), at('dst.txt')).run();
     expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('content');
-    const leftovers = (await fse.readdir(workDir)).filter(n => n.includes('.new'));
-    expect(leftovers).toEqual([]);
   });
 
-  test('the target is only replaced once the transfer completed', async () => {
-    // The reason useTempFile exists: writing straight to the target truncates
-    // it the moment the transfer starts, so an interrupted upload leaves a
-    // shortened file on the server rather than the previous version.
+  test('leaves nothing behind on success', async () => {
+    await fse.outputFile(at('src.txt'), 'content');
+    await task(at('src.txt'), at('dst.txt')).run();
+    expect((await fse.readdir(workDir)).sort()).toEqual(['dst.txt', 'src.txt']);
+  });
+
+  test('the previous version survives until the new one is complete', async () => {
     await fse.outputFile(at('src.txt'), 'brand new content');
     await fse.outputFile(at('dst.txt'), 'the previous version');
-
-    await task(at('src.txt'), at('dst.txt'), { useTempFile: true }).run();
+    await task(at('src.txt'), at('dst.txt')).run();
     expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('brand new content');
+  });
+
+  test('a failed transfer cleans up its staging file', async () => {
+    // Otherwise every interrupted upload -- and, with a unique name, every
+    // retry of one -- leaves debris nothing ever collects.
+    await expect(task(at('missing.txt'), at('dst.txt')).run()).rejects.toBeTruthy();
+    const debris = (await fse.readdir(workDir)).filter(n => n.includes('syncx-'));
+    expect(debris).toEqual([]);
+  });
+
+  test('two transfers to the same target do not share a staging file', async () => {
+    // Upstream used a fixed `<target>.new`, so two transfers to one path wrote
+    // to the same staging file and produced a corrupt result with no error.
+    await fse.outputFile(at('a.txt'), 'a'.repeat(50_000));
+    await fse.outputFile(at('b.txt'), 'b'.repeat(50_000));
+
+    const outcomes = await Promise.allSettled([
+      task(at('a.txt'), at('same.txt')).run(),
+      task(at('b.txt'), at('same.txt')).run(),
+    ]);
+
+    // One of them may lose the race at the rename -- two writers to one path is
+    // pathological and somebody has to. What must not happen is a corrupt or
+    // truncated result, or staging debris left behind.
+    expect(outcomes.some(o => o.status === 'fulfilled')).toBe(true);
+
+    const result = await fse.readFile(at('same.txt'), 'utf8');
+    expect(['a'.repeat(50_000), 'b'.repeat(50_000)]).toContain(result);
+    expect((await fse.readdir(workDir)).filter(n => n.includes('syncx-'))).toEqual([]);
+  });
+
+  test('can be turned off explicitly', async () => {
+    await fse.outputFile(at('src.txt'), 'direct');
+    await task(at('src.txt'), at('dst.txt'), { useTempFile: false }).run();
+    expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('direct');
   });
 });
 

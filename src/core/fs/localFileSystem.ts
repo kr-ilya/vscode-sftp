@@ -58,15 +58,42 @@ export default class LocalFileSystem extends FileSystem {
     return fse.futimes(fd, atime, mtime);
   }
 
+  /**
+   * Opens a read stream, resolving only once the file is actually open.
+   *
+   * This used to resolve immediately and then attach `once('error', reject)` to
+   * an already-resolved promise. That listener could never reject anything, but
+   * it did *consume* the stream's error event -- so a missing or unreadable
+   * source produced a resolved promise wrapping a dead stream. Whether anything
+   * noticed came down to a race: if the error fired before the consumer
+   * attached its own handler, the transfer promise simply never settled and the
+   * operation hung forever.
+   *
+   * Waiting for `ready` makes a failure to open a rejection, and leaves later
+   * errors -- a disk failure mid-read -- for the consumer, which is where they
+   * belong.
+   */
   get(path, option?): Promise<fs.ReadStream> {
     return new Promise((resolve, reject) => {
+      let stream: fs.ReadStream;
       try {
-        const stream = fs.createReadStream(path, option);
-        stream.once('error', reject);
-        resolve(stream);
+        stream = fs.createReadStream(path, option);
       } catch (err) {
         reject(err);
+        return;
       }
+
+      const onError = (err: Error) => {
+        stream.removeListener('ready', onReady);
+        reject(err);
+      };
+      const onReady = () => {
+        stream.removeListener('error', onError);
+        resolve(stream);
+      };
+
+      stream.once('error', onError);
+      stream.once('ready', onReady);
     });
   }
 
