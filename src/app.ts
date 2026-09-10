@@ -1,11 +1,11 @@
-import LRU from 'lru-cache';
+import { LRUCache } from 'lru-cache';
 import StatusBarItem from './ui/statusBarItem';
 import { COMMAND_TOGGLE_OUTPUT } from './constants';
 import AppState from './modules/appState';
 import RemoteExplorer from './modules/remoteExplorer';
 
 interface App {
-  fsCache: LRU.Cache<string, string>;
+  fsCache: LRUCache<string, string>;
   state: AppState;
   sftpBarItem: StatusBarItem;
   remoteExplorer: RemoteExplorer;
@@ -25,6 +25,6 @@ app.sftpBarItem = new StatusBarItem(
   'SFTP@Natizyskunk',
   COMMAND_TOGGLE_OUTPUT
 );
-app.fsCache = LRU<string, string>({ max: 6 });
+app.fsCache = new LRUCache<string, string>({ max: 6 });
 
 export default app;

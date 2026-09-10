@@ -240,7 +240,10 @@ function mergeConfigWithExternalRefer(
     Host: copyed.host,
   });
 
-  if (section === null) {
+  // ssh-config@5 types this as a union of line kinds; only sections carry a
+  // nested config. Narrow instead of asserting, so a plain directive here
+  // degrades to "no ssh_config overrides" rather than throwing.
+  if (!section || !('config' in section) || !Array.isArray(section.config)) {
     return copyed;
   }
 
@@ -254,18 +257,21 @@ function mergeConfigWithExternalRefer(
   ]);
 
   section.config.forEach(line => {
-    if (!line.param) {
+    // A section holds comments as well as directives; only the latter have
+    // a param/value pair.
+    if (!('param' in line) || !line.param || typeof line.value !== 'string') {
       return;
     }
 
     const key = mapping.get(line.param.toLowerCase());
+    if (key === undefined) {
+      return;
+    }
 
-    if (key !== undefined) {
-      if (key === 'host') {
-        copyed[key] = line.value;
-      } else {
-        setConfigValue(copyed, key, line.value);
-      }
+    if (key === 'host') {
+      copyed[key] = line.value;
+    } else {
+      setConfigValue(copyed, key, line.value);
     }
   });
 
