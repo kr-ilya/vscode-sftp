@@ -8,7 +8,7 @@ import { replaceHomePath, resolvePath } from './util/paths';
 import upath from './upath';
 import Ignore from './ignore';
 import { FileSystem } from './fs';
-import Scheduler from './scheduler';
+import { createTransferGroup, TransferGroup } from './transferGroup';
 import { createRemoteIfNoneExist, removeRemoteFs } from './remoteFs';
 import TransferTask from './transferTask';
 import localFs from './localFs';
@@ -112,6 +112,8 @@ export interface WatcherContext {
   /** Identifies the state store this tree's records belong to. */
   scope: string;
   isIgnored(fsPath: string): boolean;
+  /** The service's transfer budget, reused for examining files. */
+  concurrency?: number;
 }
 
 export interface WatcherService {
@@ -413,6 +415,7 @@ export default class FileService {
   private _profiles: string[];
   private _pendingTransferTasks: Set<TransferTask> = new Set();
   private _transferSchedulers: TransferScheduler[] = [];
+  private _transferGroup: TransferGroup | null = null;
   private _config: FileServiceConfig;
   private _configValidator: ConfigValidator;
   private _activeProfileProvider: () => string | undefined | null = () => undefined;
@@ -500,66 +503,52 @@ export default class FileService {
     this._eventEmitter.on(Event.AFTER_TRANSFER, listener);
   }
 
+  /**
+   * Opens a batch on this service's shared transfer scheduler.
+   *
+   * `concurrency` is a budget for the *service*. Upstream created a fresh
+   * scheduler per call, each with its own budget, so three overlapping uploads
+   * with `concurrency: 4` ran twelve transfers at once -- which is what trips a
+   * server's MaxSessions and looks like a flaky network rather than a setting
+   * that was never honoured.
+   */
   createTransferScheduler(concurrency): TransferScheduler {
-    // Required, not legacy style: the `transferScheduler` literal below uses
-    // method shorthand, so `this` inside run() is that object, not the service.
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const fileService = this;
-    const scheduler = new Scheduler({
-      autoStart: false,
-      concurrency,
-    });
-    scheduler.onTaskStart(task => {
-      this._pendingTransferTasks.add(task as TransferTask);
-      this._eventEmitter.emit(Event.BEFORE_TRANSFER, task);
-    });
-    scheduler.onTaskDone((err, task) => {
-      this._pendingTransferTasks.delete(task as TransferTask);
-      this._eventEmitter.emit(Event.AFTER_TRANSFER, err, task);
-    });
+    if (!this._transferGroup) {
+      this._transferGroup = createTransferGroup({
+        concurrency,
+        onTaskStart: task => {
+          this._pendingTransferTasks.add(task as TransferTask);
+          this._eventEmitter.emit(Event.BEFORE_TRANSFER, task);
+        },
+        onTaskDone: (err, task) => {
+          this._pendingTransferTasks.delete(task as TransferTask);
+          this._eventEmitter.emit(Event.AFTER_TRANSFER, err, task);
+        },
+      });
+    } else {
+      // A profile change can alter it.
+      this._transferGroup.setConcurrency(concurrency);
+    }
 
-    let runningPromise: Promise<void> | null = null;
-    let isStopped: boolean = false;
+    const batch = this._transferGroup.openBatch();
     const transferScheduler: TransferScheduler = {
       get size() {
-        return scheduler.size;
+        return batch.size;
       },
       stop() {
-        isStopped = true;
-        scheduler.empty();
+        batch.stop();
       },
       add(task: TransferTask) {
-        if (isStopped) {
-          return;
-        }
-
-        scheduler.add(task);
+        batch.add(task);
       },
-      run() {
-        if (isStopped) {
-          return Promise.resolve();
-        }
-
-        if (scheduler.size <= 0) {
-          fileService._removeScheduler(transferScheduler);
-          return Promise.resolve();
-        }
-
-        if (!runningPromise) {
-          runningPromise = new Promise(resolve => {
-            scheduler.onIdle(() => {
-              runningPromise = null;
-              fileService._removeScheduler(transferScheduler);
-              resolve();
-            });
-            scheduler.start();
-          });
-        }
-        return runningPromise;
-      },
+      run: () =>
+        // Deregister on completion. The list backs "is a transfer running?"
+        // and the Cancel command, so leaving finished batches in it would make
+        // the service look permanently busy and give Cancel nothing to cancel.
+        batch.run().finally(() => this._removeScheduler(transferScheduler)),
     };
-    fileService._storeScheduler(transferScheduler);
 
+    this._storeScheduler(transferScheduler);
     return transferScheduler;
   }
 
@@ -681,6 +670,7 @@ export default class FileService {
     let watcherConfig = this._watcherConfig;
     let isIgnored: (fsPath: string) => boolean = () => false;
     let scope = String(this.id);
+    let concurrency: number | undefined;
 
     try {
       const config = this.getConfig();
@@ -688,12 +678,13 @@ export default class FileService {
       const ignore = config.ignore;
       if (ignore) isIgnored = fsPath => ignore(fsPath);
       scope = `${this.id}:${this._activeProfileProvider() ?? ''}`;
+      concurrency = config.concurrency;
     } catch {
       // An invalid or incomplete config must not prevent the watcher from
       // existing at all; fall back to what the constructor was given.
     }
 
-    this._watcherService.create(this.baseDir, watcherConfig, { scope, isIgnored });
+    this._watcherService.create(this.baseDir, watcherConfig, { scope, isIgnored, concurrency });
   }
 
   /** Rebuilds the watcher, e.g. after the active profile changed. */

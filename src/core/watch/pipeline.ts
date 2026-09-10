@@ -20,6 +20,16 @@ import { countDecision, type TraceEntry, type WatchCounters } from './diagnostic
  */
 
 export interface PipelineDeps {
+  /**
+   * How many files to examine at once.
+   *
+   * Deliberately the service's own `concurrency` rather than a separate knob:
+   * an independent limit is exactly what left WireFerry with two multiplying
+   * budgets and a server refusing connections. Defaults to 1 -- sequential --
+   * so a caller that does not pass it cannot accidentally get more parallelism
+   * than it asked for.
+   */
+  concurrency?: number;
   store: StateStore;
   expectations: ExpectationRegistry;
   keyer: PathKeyer;
@@ -49,7 +59,15 @@ export async function processBatch(
 ): Promise<Outcome[]> {
   const outcomes: Outcome[] = [];
 
-  for (const event of events) {
+  // Hashing is I/O bound, so a large batch -- a checkout touching hundreds of
+  // files -- is worth overlapping. The results are collected per event and
+  // ordered afterwards, so parallelism does not make the outcome depend on
+  // timing.
+  const limit = Math.max(1, deps.concurrency ?? 1);
+  const indexed = new Array<Outcome | null>(events.length).fill(null);
+  let cursor = 0;
+
+  async function examine(event: PendingEvent, slot: number): Promise<void> {
     const startedAt = deps.now();
     const facts = await deps.readFacts(event.path);
 
@@ -116,10 +134,23 @@ export async function processBatch(
       decision.action === 'delete-remote' ||
       decision.action === 'ensure-directory'
     ) {
-      outcomes.push({ key: event.key, path: event.path, decision });
+      indexed[slot] = { key: event.key, path: event.path, decision };
     }
   }
 
+  async function worker(): Promise<void> {
+    for (;;) {
+      const slot = cursor++;
+      if (slot >= events.length) return;
+      await examine(events[slot], slot);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, events.length) }, worker));
+
+  for (const outcome of indexed) {
+    if (outcome) outcomes.push(outcome);
+  }
   return outcomes;
 }
 

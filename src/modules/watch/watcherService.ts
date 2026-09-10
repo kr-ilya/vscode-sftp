@@ -54,6 +54,7 @@ async function createTree(
   watcherConfig: { files?: string | false | null; autoUpload?: boolean; autoDelete?: boolean },
   context: WatcherContext
 ): Promise<void> {
+  const watcherConcurrency = context.concurrency ?? 1;
   const policy = {
     ...defaultWatchPolicy,
     autoUpload: watcherConfig.autoUpload ?? false,
@@ -87,6 +88,9 @@ async function createTree(
   const expectations = createExpectationRegistry(keyer, Date.now);
 
   const deps = {
+    // Same budget as transfers: an independent limit for examining files is
+    // exactly the second multiplying budget this fork set out to avoid.
+    concurrency: watcherConcurrency,
     store: persistent.store,
     expectations,
     keyer,

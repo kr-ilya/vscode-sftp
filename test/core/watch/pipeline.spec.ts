@@ -384,3 +384,77 @@ describe('forget', () => {
     expect(store.get(keyer('/w/a.txt'))).toBeUndefined();
   });
 });
+
+describe('bounded parallelism', () => {
+  test('examines several files at once without exceeding the limit', async () => {
+    const files: Record<string, { content: string; mtimeMs: number }> = {};
+    for (let i = 0; i < 20; i++) files[`/w/f${i}.ts`] = { content: `c${i}`, mtimeMs: 500 };
+
+    const { deps, store } = setup(files);
+    deps.concurrency = 4;
+    for (let i = 0; i < 20; i++) {
+      store.set(keyer(`/w/f${i}.ts`), recordFrom(
+        { type: 'file', size: 1, mtimeMs: 100, ino: 1, dev: 1 },
+        { algorithm: 'sha256', hash: 'old' },
+        0
+      ));
+    }
+
+    let running = 0;
+    let maxRunning = 0;
+    const inner = deps.readDigest;
+    deps.readDigest = async (p: string) => {
+      running += 1;
+      maxRunning = Math.max(maxRunning, running);
+      await new Promise(r => setTimeout(r, 2));
+      running -= 1;
+      return inner(p);
+    };
+
+    const outcomes = await processBatch(Object.keys(files).map(p => event(p)), deps);
+
+    expect(outcomes).toHaveLength(20);
+    expect(maxRunning).toBeGreaterThan(1);
+    expect(maxRunning).toBeLessThanOrEqual(4);
+  });
+
+  test('outcomes keep the batch order regardless of completion order', async () => {
+    // Parallelism must not make the result depend on which hash finished first.
+    const files: Record<string, { content: string; mtimeMs: number }> = {};
+    for (let i = 0; i < 8; i++) files[`/w/f${i}.ts`] = { content: `c${i}`, mtimeMs: 500 };
+
+    const { deps } = setup(files);
+    deps.concurrency = 8;
+    const inner = deps.readFacts;
+    deps.readFacts = async (p: string) => {
+      // Later files resolve first.
+      const index = Number(p.match(/f(\d+)/)?.[1] ?? 0);
+      await new Promise(r => setTimeout(r, (8 - index) * 2));
+      return inner(p);
+    };
+
+    const order = Object.keys(files);
+    const outcomes = await processBatch(order.map(p => event(p)), deps);
+    expect(outcomes.map(o => o.path)).toEqual(order);
+  });
+
+  test('defaults to sequential when no limit is given', async () => {
+    const files: Record<string, { content: string; mtimeMs: number }> = {};
+    for (let i = 0; i < 6; i++) files[`/w/f${i}.ts`] = { content: `c${i}`, mtimeMs: 500 };
+
+    const { deps } = setup(files);
+    let running = 0;
+    let maxRunning = 0;
+    const inner = deps.readFacts;
+    deps.readFacts = async (p: string) => {
+      running += 1;
+      maxRunning = Math.max(maxRunning, running);
+      await new Promise(r => setTimeout(r, 1));
+      running -= 1;
+      return inner(p);
+    };
+
+    await processBatch(Object.keys(files).map(p => event(p)), deps);
+    expect(maxRunning).toBe(1);
+  });
+});
