@@ -1,0 +1,49 @@
+# Servers for the file system contract suite.
+#
+# NOT RUN AUTOMATICALLY. `npm test` never touches these; the remote contract
+# specs skip unless SYNCX_CONTRACT_SFTP / SYNCX_CONTRACT_FTP are set. Bring them
+# up deliberately:
+#
+#   docker compose -f test/fixtures/docker/docker-compose.yml up -d --wait
+#   SYNCX_CONTRACT_SFTP=1 SYNCX_CONTRACT_FTP=1 npm test
+#   docker compose -f test/fixtures/docker/docker-compose.yml down -v
+#
+# Honest status: this file has not been executed yet. It is written from the
+# images' documented interfaces, not from a green run, and should be treated as
+# a first draft until someone brings it up.
+
+services:
+  sftp:
+    image: linuxserver/openssh-server:latest
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      USER_NAME: syncx
+      USER_PASSWORD: syncx-test
+      PASSWORD_ACCESS: 'true'
+      # The contract exercises chmod and utimes, which need a writable home.
+      SUDO_ACCESS: 'false'
+    ports:
+      - '2222:2222'
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 2222 || exit 1']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  ftp:
+    image: delfer/alpine-ftp-server:latest
+    environment:
+      USERS: 'syncx|syncx-test|/home/syncx|1000'
+      ADDRESS: localhost
+      # Passive range must be published for data connections to work.
+      MIN_PORT: '21000'
+      MAX_PORT: '21010'
+    ports:
+      - '2121:21'
+      - '21000-21010:21000-21010'
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 21 || exit 1']
+      interval: 2s
+      timeout: 2s
+      retries: 30

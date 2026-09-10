@@ -264,19 +264,18 @@ describe('transfer algorithm', () => {
       );
     });
 
-    // SKIPPED: harness limitation, not a product defect.
+    // SKIPPED: an in-memory file system limitation, not a product defect.
     //
-    // This is the only test in the suite that actually calls TransferTask.run().
-    // TransferTask opens the target fd itself and passes { fd, autoClose: false }
-    // to FileSystem.put(); Node's createWriteStream honours that, but memfs 4's
-    // WriteStream closes the fd regardless, so run() dies with
-    // "EBADF: bad file descriptor, close" and the upload silently never happens.
-    // The upstream suite pinned memfs 2 (where this worked) but could not run at
-    // all -- its jest transformer was broken -- so this was never observed.
+    // TransferTask opens the target descriptor itself and passes
+    // { fd, autoClose: false } to put(), meaning "write here, I will close it".
+    // Node honours that; memfs 4 does not, and the descriptor is invalid by the
+    // time the write happens. Making the double bypass createWriteStream did not
+    // help -- memfs invalidates the descriptor earlier than that.
     //
-    // Consequence worth naming: with this skipped, nothing in the suite exercises
-    // TransferTask.run(). Fixing it needs an fd-lifecycle-correct test double,
-    // which lands with the RemoteFileSystem contract work (roadmap iteration 8).
+    // Rather than keep bending an in-memory double into the shape of a real
+    // file system, TransferTask.run() is now covered directly against a real
+    // one: see test/core/transferTask.spec.ts, which exercises the plain and
+    // temp-file paths, timestamp preservation and interrupted transfers.
     test.skip('sync --update with time offset', async () => {
       const remoteFs = createRemoteFs({ remoteTimeOffsetInHours: 6 });
       fillFs({

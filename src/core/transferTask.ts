@@ -37,7 +37,7 @@ export default class TransferTask implements Task {
   private readonly _transferDirection: TransferDirection;
   private readonly _TransferOption: TransferOption;
   private _handle: Readable;
-  private _cancelled: boolean;
+  private _cancelled = false;
   // private _fileStatus: FileStatus;
 
   constructor(
@@ -101,9 +101,21 @@ export default class TransferTask implements Task {
     }
   }
 
+  /**
+   * Marks the task cancelled and aborts its stream if there is one.
+   *
+   * The flag is set unconditionally. Previously the whole body was guarded on
+   * `this._handle`, so cancelling a task before its source stream existed --
+   * which is every task still queued, and every one in the window between
+   * starting and opening the stream -- did nothing at all, and `isCancelled()`
+   * kept reporting `undefined`. A Cancel button that silently misses the tasks
+   * that have not started yet is the wrong way round: those are the easiest
+   * ones to stop.
+   */
   cancel() {
-    if (this._handle && !this._cancelled) {
-      this._cancelled = true;
+    if (this._cancelled) return;
+    this._cancelled = true;
+    if (this._handle) {
       FileSystem.abortReadableStream(this._handle);
     }
   }
@@ -113,6 +125,9 @@ export default class TransferTask implements Task {
   }
 
   private async _transferFile() {
+    // Cancelled while queued: do not start moving bytes.
+    if (this._cancelled) return;
+
     const src = this._srcFsPath;
     const target = this._targetFsPath;
     const srcFs = this._srcFs;
