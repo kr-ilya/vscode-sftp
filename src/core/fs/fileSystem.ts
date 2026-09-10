@@ -5,7 +5,7 @@ interface FileSystemError extends Error {
   code: string;
 }
 
-export const ERROR_MSG_STREAM_INTERRUPT = 'sftp.stream.interrupt';
+export const ERROR_MSG_STREAM_INTERRUPT = 'syncx.stream.interrupt';
 
 export type FileHandle = unknown;
 

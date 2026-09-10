@@ -17,12 +17,12 @@ app.state = new AppState();
 app.sftpBarItem = new StatusBarItem(
   () => {
     if (app.state.profile) {
-      return `SFTP: ${app.state.profile}`;
+      return `SyncX: ${app.state.profile}`;
     } else {
-      return 'SFTP';
+      return 'SyncX';
     }
   },
-  'SFTP@Natizyskunk',
+  'SyncX — SFTP & FTP sync',
   COMMAND_TOGGLE_OUTPUT
 );
 app.fsCache = new LRUCache<string, string>({ max: 6 });

@@ -21,7 +21,7 @@ export default class RemoteExplorer {
       vscode.workspace.registerTextDocumentContentProvider(REMOTE_SCHEME, this._treeDataProvider)
     );
 
-    this._explorerView = vscode.window.createTreeView('remoteExplorer', {
+    this._explorerView = vscode.window.createTreeView('syncx.remoteExplorer', {
       showCollapseAll: true,
       treeDataProvider: this._treeDataProvider,
       canSelectMany: true,
