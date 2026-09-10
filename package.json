@@ -707,7 +707,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "package": "vsce package",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "gen:schema": "node scripts/gen-schema.mjs",
+    "gen:schema:check": "node scripts/gen-schema.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -728,7 +730,6 @@
     "fs-extra": "^11.4.0",
     "ftp": "^0.3.10",
     "ignore": "^7.0.9",
-    "joi": "^10.6.0",
     "jsonc-parser": "^3.3.1",
     "lru-cache": "^11.5.2",
     "p-queue": "2.4.2",

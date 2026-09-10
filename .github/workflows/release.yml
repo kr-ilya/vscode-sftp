@@ -41,6 +41,7 @@ jobs:
       # merge commit: a tag can point anywhere.
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run gen:schema:check
       - run: npm test
       - run: npm run build
 

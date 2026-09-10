@@ -30,6 +30,11 @@ jobs:
       # esbuild strips types without checking them, so this is the only thing
       # standing between a type error and a shipped bundle.
       - run: npm run typecheck
+      # schema/config.schema.json is generated from the zod schema. Checking it
+      # here is what stops the editor's IntelliSense drifting away from what the
+      # extension actually validates -- which is exactly how the hand-written
+      # schema and the joi schema had diverged.
+      - run: npm run gen:schema:check
       - run: npm test
 
   package:

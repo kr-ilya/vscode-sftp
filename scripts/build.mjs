@@ -57,6 +57,13 @@ const options = {
   format: 'cjs',
   // Provided by the extension host; must never be bundled.
   external: ['vscode'],
+  // Prefer a package's ESM entry over its CommonJS/UMD one. esbuild defaults to
+  // ['main', 'module'] for platform:node, but a UMD entry hands `require` to a
+  // factory as a parameter, which no bundler can follow statically -- so its
+  // internal relative requires survive into the bundle and fail at load time.
+  // jsonc-parser is exactly that shape. webpack defaulted to ['module', 'main'],
+  // so this restores the resolution the project has always relied on.
+  mainFields: ['module', 'main'],
   plugins: [stubNativeAddons],
   sourcemap: production ? false : 'linked',
   minify: production,

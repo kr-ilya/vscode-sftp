@@ -1,3 +1,0 @@
-{
-  "oneOf": [{ "$ref": "sftp.schema.json" }, { "$ref": "ftp.schema.json" }]
-}

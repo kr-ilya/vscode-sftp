@@ -1,13 +1,865 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SyncX configuration",
+  "description": "Generated from src/core/config/schema.ts by scripts/gen-schema.mjs. Do not edit by hand.",
   "oneOf": [
+    {
+      "$ref": "#/definitions/configuration"
+    },
     {
       "type": "array",
       "items": {
-        "$ref": "simple-config.schema.json"
+        "$ref": "#/definitions/configuration"
       }
-    },
-    {
-      "$ref": "simple-config.schema.json"
     }
-  ]
+  ],
+  "definitions": {
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "A label for this configuration.",
+          "type": "string"
+        },
+        "context": {
+          "description": "Local directory to sync, relative to the workspace root.",
+          "type": "string"
+        },
+        "protocol": {
+          "description": "Transfer protocol.",
+          "type": "string",
+          "enum": [
+            "sftp",
+            "ftp",
+            "local"
+          ]
+        },
+        "watcher": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "description": "A glob pattern selecting which files to watch.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean",
+                  "const": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "autoUpload": {
+              "description": "Upload a file when it changes on disk.",
+              "type": "boolean"
+            },
+            "autoDelete": {
+              "description": "Delete the remote file when the local one is deleted.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {},
+          "description": "Watch for changes made outside the editor."
+        },
+        "defaultProfile": {
+          "description": "Profile to select when none is chosen.",
+          "type": "string"
+        },
+        "profiles": {
+          "description": "Named overlays on this configuration, keyed by profile name.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "remote": {
+                "description": "Name of a remote defined under `remotefs.remote` in User Settings; its values are merged in.",
+                "type": "string"
+              },
+              "uploadOnSave": {
+                "description": "Upload on every save.",
+                "type": "boolean"
+              },
+              "useTempFile": {
+                "description": "Write to a temporary file and rename it into place, so an interrupted upload cannot leave a truncated file.",
+                "type": "boolean"
+              },
+              "openSsh": {
+                "description": "Use an atomic rename on the server (OpenSSH only). Implies useTempFile.",
+                "type": "boolean"
+              },
+              "downloadOnOpen": {
+                "description": "Download a file when it is opened. \"confirm\" asks first.",
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string",
+                    "const": "confirm"
+                  }
+                ]
+              },
+              "filePerm": {
+                "description": "Octal mode to apply to uploaded files, e.g. 0o644.",
+                "type": "number"
+              },
+              "dirPerm": {
+                "description": "Octal mode to apply to created directories, e.g. 0o755.",
+                "type": "number"
+              },
+              "syncOption": {
+                "type": "object",
+                "properties": {
+                  "delete": {
+                    "description": "Delete extraneous files from destination directories.",
+                    "type": "boolean"
+                  },
+                  "skipCreate": {
+                    "description": "Skip creating new files on the destination.",
+                    "type": "boolean"
+                  },
+                  "ignoreExisting": {
+                    "description": "Skip updating files that already exist on the destination.",
+                    "type": "boolean"
+                  },
+                  "update": {
+                    "description": "Update the destination only if the source is newer.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": {},
+                "description": "Behaviour of the Sync commands."
+              },
+              "ignore": {
+                "description": "Paths to ignore, with .gitignore semantics. Replaces the default list rather than adding to it.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "An ignore pattern."
+                }
+              },
+              "ignoreFile": {
+                "description": "Path to a .gitignore-style file, absolute or relative to the workspace root.",
+                "type": "string"
+              },
+              "remoteExplorer": {
+                "type": "object",
+                "properties": {
+                  "filesExclude": {
+                    "description": "Glob patterns for files and folders the Remote Explorer should hide.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "order": {
+                    "description": "Sort key for the Remote Explorer, ascending. Ties are broken by name.",
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": {},
+                "description": "Remote Explorer settings."
+              },
+              "remoteTimeOffsetInHours": {
+                "description": "Hours the server clock is ahead of the local one (remote minus local).",
+                "type": "number"
+              },
+              "limitOpenFilesOnRemote": {
+                "description": "Cap concurrently open remote file descriptors. `true` picks a safe default.",
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean",
+                    "const": true
+                  }
+                ]
+              },
+              "concurrency": {
+                "description": "How many transfers may run at once.",
+                "type": "number"
+              },
+              "host": {
+                "type": "string",
+                "description": "Hostname or IP address of the server."
+              },
+              "port": {
+                "description": "Port of the server.",
+                "type": "number"
+              },
+              "username": {
+                "type": "string",
+                "description": "Username to authenticate as."
+              },
+              "password": {
+                "description": "Password for password authentication.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remotePath": {
+                "type": "string",
+                "description": "Absolute path on the server to sync against."
+              },
+              "connectTimeout": {
+                "description": "How long to wait for the connection, in milliseconds.",
+                "type": "number"
+              },
+              "agent": {
+                "description": "Path to the ssh-agent socket. On Windows, use \"pageant\" or a named pipe.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "privateKeyPath": {
+                "description": "Absolute path to the private key.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "passphrase": {
+                "description": "Passphrase for an encrypted private key. `true` prompts for it.",
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean",
+                        "const": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "interactiveAuth": {
+                "description": "Keyboard-interactive authentication, e.g. for one-time codes.",
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "algorithms": {
+                "description": "Overrides for the negotiated transport algorithms.",
+                "type": "object",
+                "properties": {
+                  "kex": {
+                    "description": "Key exchange algorithms.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cipher": {
+                    "description": "Ciphers.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "serverHostKey": {
+                    "description": "Accepted server host key formats.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "hmac": {
+                    "description": "MAC algorithms.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "sshConfigPath": {
+                "description": "Path to an ssh_config file to read defaults from.",
+                "type": "string"
+              },
+              "sshCustomParams": {
+                "description": "Extra arguments appended to the command used by \"Open SSH in Terminal\".",
+                "type": "string"
+              },
+              "secure": {
+                "description": "TLS: true for control and data, \"control\" for the control channel only, \"implicit\" for implicit FTPS.",
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string",
+                    "const": "control"
+                  },
+                  {
+                    "type": "string",
+                    "const": "implicit"
+                  }
+                ]
+              },
+              "secureOptions": {
+                "description": "Options forwarded verbatim to Node's tls.connect().",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "passive": {
+                "description": "Use passive mode.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "hop": {
+          "description": "Jump host, or an ordered chain of them, to tunnel the connection through.",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Hostname or IP address of the server."
+                },
+                "port": {
+                  "description": "Port of the server.",
+                  "type": "number"
+                },
+                "username": {
+                  "type": "string",
+                  "description": "Username to authenticate as."
+                },
+                "password": {
+                  "description": "Password for password authentication.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "remotePath": {
+                  "type": "string",
+                  "description": "Absolute path on the server to sync against."
+                },
+                "connectTimeout": {
+                  "description": "How long to wait for the connection, in milliseconds.",
+                  "type": "number"
+                },
+                "agent": {
+                  "description": "Path to the ssh-agent socket. On Windows, use \"pageant\" or a named pipe.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "privateKeyPath": {
+                  "description": "Absolute path to the private key.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "passphrase": {
+                  "description": "Passphrase for an encrypted private key. `true` prompts for it.",
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "interactiveAuth": {
+                  "description": "Keyboard-interactive authentication, e.g. for one-time codes.",
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "algorithms": {
+                  "description": "Overrides for the negotiated transport algorithms.",
+                  "type": "object",
+                  "properties": {
+                    "kex": {
+                      "description": "Key exchange algorithms.",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "cipher": {
+                      "description": "Ciphers.",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "serverHostKey": {
+                      "description": "Accepted server host key formats.",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "hmac": {
+                      "description": "MAC algorithms.",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": {}
+                },
+                "sshConfigPath": {
+                  "description": "Path to an ssh_config file to read defaults from.",
+                  "type": "string"
+                },
+                "sshCustomParams": {
+                  "description": "Extra arguments appended to the command used by \"Open SSH in Terminal\".",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": {}
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Hostname or IP address of the server."
+                  },
+                  "port": {
+                    "description": "Port of the server.",
+                    "type": "number"
+                  },
+                  "username": {
+                    "type": "string",
+                    "description": "Username to authenticate as."
+                  },
+                  "password": {
+                    "description": "Password for password authentication.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "remotePath": {
+                    "type": "string",
+                    "description": "Absolute path on the server to sync against."
+                  },
+                  "connectTimeout": {
+                    "description": "How long to wait for the connection, in milliseconds.",
+                    "type": "number"
+                  },
+                  "agent": {
+                    "description": "Path to the ssh-agent socket. On Windows, use \"pageant\" or a named pipe.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "privateKeyPath": {
+                    "description": "Absolute path to the private key.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "passphrase": {
+                    "description": "Passphrase for an encrypted private key. `true` prompts for it.",
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "boolean",
+                            "const": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "interactiveAuth": {
+                    "description": "Keyboard-interactive authentication, e.g. for one-time codes.",
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "algorithms": {
+                    "description": "Overrides for the negotiated transport algorithms.",
+                    "type": "object",
+                    "properties": {
+                      "kex": {
+                        "description": "Key exchange algorithms.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "cipher": {
+                        "description": "Ciphers.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "serverHostKey": {
+                        "description": "Accepted server host key formats.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hmac": {
+                        "description": "MAC algorithms.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": {}
+                  },
+                  "sshConfigPath": {
+                    "description": "Path to an ssh_config file to read defaults from.",
+                    "type": "string"
+                  },
+                  "sshCustomParams": {
+                    "description": "Extra arguments appended to the command used by \"Open SSH in Terminal\".",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": {}
+              }
+            }
+          ]
+        },
+        "remote": {
+          "description": "Name of a remote defined under `remotefs.remote` in User Settings; its values are merged in.",
+          "type": "string"
+        },
+        "uploadOnSave": {
+          "description": "Upload on every save.",
+          "type": "boolean"
+        },
+        "useTempFile": {
+          "description": "Write to a temporary file and rename it into place, so an interrupted upload cannot leave a truncated file.",
+          "type": "boolean"
+        },
+        "openSsh": {
+          "description": "Use an atomic rename on the server (OpenSSH only). Implies useTempFile.",
+          "type": "boolean"
+        },
+        "downloadOnOpen": {
+          "description": "Download a file when it is opened. \"confirm\" asks first.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "confirm"
+            }
+          ]
+        },
+        "filePerm": {
+          "description": "Octal mode to apply to uploaded files, e.g. 0o644.",
+          "type": "number"
+        },
+        "dirPerm": {
+          "description": "Octal mode to apply to created directories, e.g. 0o755.",
+          "type": "number"
+        },
+        "syncOption": {
+          "type": "object",
+          "properties": {
+            "delete": {
+              "description": "Delete extraneous files from destination directories.",
+              "type": "boolean"
+            },
+            "skipCreate": {
+              "description": "Skip creating new files on the destination.",
+              "type": "boolean"
+            },
+            "ignoreExisting": {
+              "description": "Skip updating files that already exist on the destination.",
+              "type": "boolean"
+            },
+            "update": {
+              "description": "Update the destination only if the source is newer.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {},
+          "description": "Behaviour of the Sync commands."
+        },
+        "ignore": {
+          "description": "Paths to ignore, with .gitignore semantics. Replaces the default list rather than adding to it.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "An ignore pattern."
+          }
+        },
+        "ignoreFile": {
+          "description": "Path to a .gitignore-style file, absolute or relative to the workspace root.",
+          "type": "string"
+        },
+        "remoteExplorer": {
+          "type": "object",
+          "properties": {
+            "filesExclude": {
+              "description": "Glob patterns for files and folders the Remote Explorer should hide.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "order": {
+              "description": "Sort key for the Remote Explorer, ascending. Ties are broken by name.",
+              "type": "number"
+            }
+          },
+          "additionalProperties": {},
+          "description": "Remote Explorer settings."
+        },
+        "remoteTimeOffsetInHours": {
+          "description": "Hours the server clock is ahead of the local one (remote minus local).",
+          "type": "number"
+        },
+        "limitOpenFilesOnRemote": {
+          "description": "Cap concurrently open remote file descriptors. `true` picks a safe default.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean",
+              "const": true
+            }
+          ]
+        },
+        "concurrency": {
+          "description": "How many transfers may run at once.",
+          "type": "number"
+        },
+        "host": {
+          "type": "string",
+          "description": "Hostname or IP address of the server."
+        },
+        "port": {
+          "description": "Port of the server.",
+          "type": "number"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username to authenticate as."
+        },
+        "password": {
+          "description": "Password for password authentication.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remotePath": {
+          "type": "string",
+          "description": "Absolute path on the server to sync against."
+        },
+        "connectTimeout": {
+          "description": "How long to wait for the connection, in milliseconds.",
+          "type": "number"
+        },
+        "agent": {
+          "description": "Path to the ssh-agent socket. On Windows, use \"pageant\" or a named pipe.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "privateKeyPath": {
+          "description": "Absolute path to the private key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "passphrase": {
+          "description": "Passphrase for an encrypted private key. `true` prompts for it.",
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean",
+                  "const": true
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interactiveAuth": {
+          "description": "Keyboard-interactive authentication, e.g. for one-time codes.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "algorithms": {
+          "description": "Overrides for the negotiated transport algorithms.",
+          "type": "object",
+          "properties": {
+            "kex": {
+              "description": "Key exchange algorithms.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "cipher": {
+              "description": "Ciphers.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "serverHostKey": {
+              "description": "Accepted server host key formats.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "hmac": {
+              "description": "MAC algorithms.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": {}
+        },
+        "sshConfigPath": {
+          "description": "Path to an ssh_config file to read defaults from.",
+          "type": "string"
+        },
+        "sshCustomParams": {
+          "description": "Extra arguments appended to the command used by \"Open SSH in Terminal\".",
+          "type": "string"
+        },
+        "secure": {
+          "description": "TLS: true for control and data, \"control\" for the control channel only, \"implicit\" for implicit FTPS.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "control"
+            },
+            {
+              "type": "string",
+              "const": "implicit"
+            }
+          ]
+        },
+        "secureOptions": {
+          "description": "Options forwarded verbatim to Node's tls.connect().",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "passive": {
+          "description": "Use passive mode.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "username",
+        "remotePath"
+      ],
+      "additionalProperties": {}
+    }
+  }
 }

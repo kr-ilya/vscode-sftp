@@ -115,7 +115,10 @@ interface TransferScheduler {
   stop(): void;
 }
 
-type ConfigValidator = (x: any) => { message: string };
+// Returns undefined when the config is valid. The previous signature claimed
+// an error was always returned, which was never true -- joi returned
+// undefined on success, and getConfig() has always branched on that.
+type ConfigValidator = (x: unknown) => { message: string } | undefined;
 
 const DEFAULT_SSHCONFIG_FILE = '~/.ssh/config';
 
