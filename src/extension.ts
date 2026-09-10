@@ -7,6 +7,7 @@ import initCommands from './initCommands';
 import { installLogSink } from './ui/output';
 import { installCoreHost } from './modules/coreHost';
 import { initializeWatching } from './modules/watch/watcherService';
+import { initializeHostKeys } from './modules/ssh/hostKeys';
 import { reportError } from './helper';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
@@ -38,6 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Change-detection state is persisted under the extension's storage, so the
   // watcher needs the context before any service is created.
   initializeWatching(context);
+  initializeHostKeys(context);
 
   try {
     initCommands(context);

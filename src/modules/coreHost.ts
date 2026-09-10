@@ -2,12 +2,14 @@ import app from '../app';
 import { promptForPassword, getUserSetting } from '../host';
 import { setRemoteFsHost } from '../core/remoteFs';
 import { setNamedRemoteResolver } from '../core/fileService';
+import { setHostVerifierFactory } from '../core/remote-client/sshClient';
+import { createHostVerifier } from './ssh/hostKeys';
 import { SETTING_KEY_REMOTE } from '../constants';
 
 /**
  * Supplies src/core with the host capabilities it declares: asking the user for
- * a password, reporting connection progress, and resolving a named remote from
- * user settings.
+ * a password, reporting connection progress, resolving a named remote from user
+ * settings, and asking about an unrecognised SSH host key.
  *
  * This is the composition root for that dependency -- core declares the shape,
  * the editor layer provides it, and neither imports the other's internals.
@@ -22,4 +24,6 @@ export function installCoreHost(): void {
   setNamedRemoteResolver(name =>
     getUserSetting(SETTING_KEY_REMOTE).get<Record<string, any>>(name)
   );
+
+  setHostVerifierFactory(createHostVerifier);
 }
