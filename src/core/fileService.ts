@@ -100,8 +100,22 @@ export interface ServiceConfig
   ignore?: ((fsPath: string) => boolean) | null;
 }
 
+/**
+ * What the watcher implementation needs from the service it watches for.
+ *
+ * `isIgnored` is passed in rather than being looked up later so the watcher can
+ * drop an ignored path before it costs a queue slot, a debounce cycle and a
+ * handler invocation -- upstream only checked ignore rules deep inside the
+ * transfer, after all of that had already happened.
+ */
+export interface WatcherContext {
+  /** Identifies the state store this tree's records belong to. */
+  scope: string;
+  isIgnored(fsPath: string): boolean;
+}
+
 export interface WatcherService {
-  create(watcherBase: string, watcherConfig: WatcherConfig): any;
+  create(watcherBase: string, watcherConfig: WatcherConfig, context: WatcherContext): any;
   dispose(watcherBase: string): void;
 }
 
@@ -655,8 +669,37 @@ export default class FileService {
     return ignoreFunc;
   }
 
+  /**
+   * Rebuilds the watcher from the *effective* configuration.
+   *
+   * Upstream captured `config.watcher` in the constructor and never looked
+   * again, so a profile that overrode `watcher` was ignored and switching
+   * profiles left the old watcher in place. Reading it here, through
+   * getConfig(), means the active profile applies.
+   */
   private _createWatcher() {
-    this._watcherService.create(this.baseDir, this._watcherConfig);
+    let watcherConfig = this._watcherConfig;
+    let isIgnored: (fsPath: string) => boolean = () => false;
+    let scope = String(this.id);
+
+    try {
+      const config = this.getConfig();
+      watcherConfig = config.watcher ?? watcherConfig;
+      const ignore = config.ignore;
+      if (ignore) isIgnored = fsPath => ignore(fsPath);
+      scope = `${this.id}:${this._activeProfileProvider() ?? ''}`;
+    } catch {
+      // An invalid or incomplete config must not prevent the watcher from
+      // existing at all; fall back to what the constructor was given.
+    }
+
+    this._watcherService.create(this.baseDir, watcherConfig, { scope, isIgnored });
+  }
+
+  /** Rebuilds the watcher, e.g. after the active profile changed. */
+  reloadWatcher() {
+    this._disposeWatcher();
+    this._createWatcher();
   }
 
   private _disposeWatcher() {

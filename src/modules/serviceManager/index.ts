@@ -6,7 +6,7 @@ import { simplifyPath, reportError } from '../../helper';
 import { FileService, TransferTask } from '../../core';
 import UResource from '../../uResource';
 import { validateConfig } from '../config';
-import watcherService from '../fileWatcher';
+import watcherService from '../watch/watcherService';
 import Trie from './trie';
 
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;

@@ -293,6 +293,16 @@
           "light": "resources/light/refresh.svg",
           "dark": "resources/dark/refresh.svg"
         }
+      },
+      {
+        "command": "syncx.watch.diagnostics",
+        "title": "Show Change Detection Diagnostics",
+        "category": "SyncX"
+      },
+      {
+        "command": "syncx.watch.dryRun",
+        "title": "Dry Run: Show What Would Be Uploaded",
+        "category": "SyncX"
       }
     ],
     "menus": {

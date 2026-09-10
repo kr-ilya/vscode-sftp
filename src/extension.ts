@@ -6,6 +6,7 @@ import app from './app';
 import initCommands from './initCommands';
 import { installLogSink } from './ui/output';
 import { installCoreHost } from './modules/coreHost';
+import { initializeWatching } from './modules/watch/watcherService';
 import { reportError } from './helper';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
@@ -34,6 +35,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // it buffered while modules were initialising.
   installLogSink();
   installCoreHost();
+  // Change-detection state is persisted under the extension's storage, so the
+  // watcher needs the context before any service is created.
+  initializeWatching(context);
 
   try {
     initCommands(context);
@@ -51,11 +55,22 @@ export async function activate(context: vscode.ExtensionContext) {
   app.state.subscribe(_ => {
     const currentText = app.sftpBarItem.getText();
     // current is showing profile
-    if (currentText.startsWith('SFTP')) {
+    if (currentText.startsWith('SyncX')) {
       app.sftpBarItem.reset();
     }
     if (app.remoteExplorer) {
       app.remoteExplorer.refresh();
+    }
+    // A profile can override `watcher` and `ignore`, and change-detection state
+    // is kept per profile -- one file legitimately has different state for
+    // different servers. Upstream froze the watcher config in the constructor,
+    // so switching profiles left the previous profile's watcher running.
+    for (const service of getAllFileService()) {
+      try {
+        service.reloadWatcher();
+      } catch (error) {
+        reportError(error, 'reloadWatcher');
+      }
     }
   });
   try {

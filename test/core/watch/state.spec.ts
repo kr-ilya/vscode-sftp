@@ -101,3 +101,14 @@ describe('recordFrom', () => {
     expect(r).toMatchObject({ size: 42, algorithm: 'sha256', hash: 'abc', at: 1234 });
   });
 });
+
+describe('store operations', () => {
+  test('delete removes an entry and keys reflects it', () => {
+    const store = createStateStore();
+    store.set(key('/a'), record());
+    store.set(key('/b'), record());
+    store.delete(key('/a'));
+    expect([...store.keys()]).toEqual(['/b']);
+    expect(store.size).toBe(1);
+  });
+});

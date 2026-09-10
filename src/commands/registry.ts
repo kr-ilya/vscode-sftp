@@ -27,6 +27,8 @@ import commandOpenSshConnection from './commandOpenSshConnection';
 import commandSetProfile from './commandSetProfile';
 import commandToggleOutputPanel from './commandToggleOutputPanel';
 import commandUploadChangedFiles from './commandUploadChangedFiles';
+import commandWatchDiagnostics from './commandWatchDiagnostics';
+import commandWatchDryRun from './commandWatchDryRun';
 import fileCommandCreateFile from './fileCommandCreateFile';
 import fileCommandCreateFolder from './fileCommandCreateFolder';
 import fileCommandDeleteRemote from './fileCommandDeleteRemote';
@@ -73,6 +75,8 @@ export const plainCommands: CommandEntry[] = [
   ['SetProfile', commandSetProfile],
   ['ToggleOutputPanel', commandToggleOutputPanel],
   ['UploadChangedFiles', commandUploadChangedFiles],
+  ['WatchDiagnostics', commandWatchDiagnostics],
+  ['WatchDryRun', commandWatchDryRun],
 ];
 
 export const fileCommands: CommandEntry[] = [

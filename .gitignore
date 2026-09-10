@@ -1,4 +1,5 @@
 ### Default ###
+coverage
 .DS_Store
 out
 dist

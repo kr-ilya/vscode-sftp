@@ -249,3 +249,15 @@ describe('digest algorithm changes', () => {
     ).toEqual({ action: 'upload' });
   });
 });
+
+describe('isTransfer', () => {
+  test('true only for decisions that put bytes on the network', async () => {
+    const { isTransfer } = await import('../../../src/core/watch/decide');
+    expect(isTransfer({ action: 'upload' })).toBe(true);
+    expect(isTransfer({ action: 'delete-remote' })).toBe(true);
+    expect(isTransfer({ action: 'ensure-directory' })).toBe(false);
+    expect(isTransfer({ action: 'record-only' })).toBe(false);
+    expect(isTransfer({ action: 'hash-required' })).toBe(false);
+    expect(isTransfer({ action: 'skip', reason: 'ignored' })).toBe(false);
+  });
+});
