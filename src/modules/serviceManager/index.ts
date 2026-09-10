@@ -3,7 +3,8 @@ import * as path from 'path';
 import app from '../../app';
 import logger from '../../logger';
 import { simplifyPath, reportError } from '../../helper';
-import { UResource, FileService, TransferTask } from '../../core';
+import { FileService, TransferTask } from '../../core';
+import UResource from '../../uResource';
 import { validateConfig } from '../config';
 import watcherService from '../fileWatcher';
 import Trie from './trie';
@@ -99,6 +100,8 @@ export function createFileService(config: any, workspace: string) {
   service.name = config.name;
   service.setConfigValidator(validateConfig);
   service.setWatcherService(watcherService);
+  // Core does not read application state; the composition root supplies it.
+  service.setActiveProfileProvider(() => app.state.profile);
   service.beforeTransfer(task => {
     const { localFsPath, transferType } = task;
     app.sftpBarItem.showMsg(

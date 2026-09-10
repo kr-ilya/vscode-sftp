@@ -1,6 +1,7 @@
 import { Uri } from 'vscode';
 import app from '../app';
-import { UResource, FileService, ServiceConfig } from '../core';
+import { FileService, ServiceConfig } from '../core';
+import UResource from '../uResource';
 import logger from '../logger';
 import { getFileService } from '../modules/serviceManager';
 

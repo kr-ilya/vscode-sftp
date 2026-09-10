@@ -1,4 +1,5 @@
-import { UResource, FileService, FileType } from '../core';
+import { FileService, FileType } from '../core';
+import UResource from '../uResource';
 import app from '../app';
 
 // NEED_VSCODE_UPDATE: detect explorer view visible

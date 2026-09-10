@@ -1,8 +1,16 @@
+/**
+ * A resource identified by a VS Code URI, mapping between the local path and
+ * the remote one.
+ *
+ * This used to sit in src/core, which it made impossible to keep free of the
+ * editor API: the type is a `vscode.Uri` wrapper, so the dependency is
+ * intrinsic rather than incidental. It belongs on the adapter side.
+ */
 /* tslint:disable max-classes-per-file */
 import * as querystring from 'querystring';
 import { Uri } from 'vscode';
-import { toLocalPath, toRemotePath } from '../helper';
-import { REMOTE_SCHEME } from '../constants';
+import { toLocalPath, toRemotePath } from './helper';
+import { REMOTE_SCHEME } from './constants';
 
 function createUriString(authority: string, filepath: string, query: { [x: string]: any }) {
   // remove leading slash

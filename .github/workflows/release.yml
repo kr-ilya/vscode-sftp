@@ -42,6 +42,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run gen:schema:check
+      # src/core must stay free of the editor API. ESLint catches a direct
+      # import; this walks the transitive graph, which is where every real
+      # regression came from -- a helper barrel re-exporting a module that
+      # shows a dialog, and so on.
+      - run: npm run check:core
       - run: npm test
       - run: npm run build
 

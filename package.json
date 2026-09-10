@@ -709,7 +709,8 @@
     "package": "vsce package",
     "smoke": "node scripts/smoke.mjs",
     "gen:schema": "node scripts/gen-schema.mjs",
-    "gen:schema:check": "node scripts/gen-schema.mjs --check"
+    "gen:schema:check": "node scripts/gen-schema.mjs --check",
+    "check:core": "node scripts/check-core-purity.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

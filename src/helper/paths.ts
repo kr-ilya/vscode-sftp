@@ -1,4 +1,3 @@
-import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { upath } from '../core';
@@ -37,18 +36,11 @@ export function toLocalPath(remotePath: string, remoteContext: string, localCont
   return path.join(localContext, upath.relative(remoteContext, remotePath));
 }
 
-export function isSubpathOf(possiableParentPath: string, pathname: string) {
-  return path.normalize(pathname).indexOf(path.normalize(possiableParentPath)) === 0;
-}
+// Pure path helpers live in core so that importing one does not drag the editor
+// API in with it. Re-exported here for the existing call sites.
+export { isSubpathOf, replaceHomePath, resolvePath } from '../core/util/paths';
 
-export function replaceHomePath(pathname: string) {
-  return pathname.substr(0, 2) === '~/' ? path.join(os.homedir(), pathname.slice(2)) : pathname;
-}
-
-export function resolvePath(from: string, to: string) {
-  return path.resolve(from, replaceHomePath(to));
-}
-
+/** Editor-aware: needs to know what the open workspace folders are. */
 export function isInWorkspace(filepath: string) {
   const workspaceFolders = getWorkspaceFolders();
   return (

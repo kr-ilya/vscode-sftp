@@ -1,7 +1,5 @@
 import upath from './upath';
-import { promptForPassword } from '../host';
-import logger from '../logger';
-import app from '../app';
+import logger from './logger';
 import { ConnectOption } from './remote-client/remoteClient';
 import {
   FileSystem,
@@ -10,6 +8,31 @@ import {
   FTPFileSystem,
 } from './fs';
 import localFs from './localFs';
+
+/**
+ * The two things connecting needs from the host: a way to ask the user for a
+ * password, and somewhere to report that a connection is in progress.
+ *
+ * Injected rather than imported so that core does not reach into the status bar
+ * or the editor's input box. The defaults make an unconfigured core usable --
+ * and testable -- rather than crashing: no prompt available means password
+ * authentication simply fails, which is the honest outcome.
+ */
+export interface RemoteFsHost {
+  promptForPassword(prompt: string): Promise<string | undefined>;
+  onConnecting(timeoutMs: number | undefined): void;
+  onConnected(): void;
+}
+
+let host: RemoteFsHost = {
+  promptForPassword: async () => undefined,
+  onConnecting: () => undefined,
+  onConnected: () => undefined,
+};
+
+export function setRemoteFsHost(next: RemoteFsHost): void {
+  host = next;
+}
 
 function hashOption(opiton) {
   return Object.keys(opiton)
@@ -77,14 +100,14 @@ class KeepAliveRemoteFs {
     });
     this.fs.onDisconnected(this.invalid.bind(this));
 
-    app.sftpBarItem.showMsg('connecting...', connectOption.connectTimeout);
+    host.onConnecting(connectOption.connectTimeout);
     this.pendingPromise = this.fs
       .connect(connectOption, {
-        askForPasswd: promptForPassword,
+        askForPasswd: prompt => host.promptForPassword(prompt),
       })
       .then(
         () => {
-          app.sftpBarItem.reset();
+          host.onConnected();
           this.isValid = true;
           return this.fs;
         },

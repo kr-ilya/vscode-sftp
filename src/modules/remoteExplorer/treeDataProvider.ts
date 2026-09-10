@@ -2,14 +2,13 @@ import * as vscode from 'vscode';
 import { showTextDocument } from '../../host';
 import {
   upath,
-  UResource,
-  Resource,
   FileService,
   FileType,
   FileEntry,
   Ignore,
   ServiceConfig,
 } from '../../core';
+import UResource, { Resource } from '../../uResource';
 import {
   COMMAND_REMOTEEXPLORER_VIEW_CONTENT,
   COMMAND_REMOTEEXPLORER_EDITINLOCAL,

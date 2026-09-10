@@ -3,7 +3,7 @@ import upath from '../upath';
 import RemoteClient, { ErrorCode, ConnectOption, Config } from './remoteClient';
 import localFs from '../localFs';
 import { FileSystem, RemoteFileSystem, SFTPFileSystem } from '../fs';
-import logger from '../../logger';
+import logger from '../logger';
 import CustomError from '../customError';
 
 let MAX_OPEN_FD_NUM = 222;

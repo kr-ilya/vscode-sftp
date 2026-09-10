@@ -4,6 +4,8 @@
 import * as vscode from 'vscode';
 import app from './app';
 import initCommands from './initCommands';
+import { installLogSink } from './ui/output';
+import { installCoreHost } from './modules/coreHost';
 import { reportError } from './helper';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
@@ -28,6 +30,11 @@ function setup(workspaceFolders: readonly vscode.WorkspaceFolder[]) {
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
+  // First thing: point the core logger at the output channel and flush whatever
+  // it buffered while modules were initialising.
+  installLogSink();
+  installCoreHost();
+
   try {
     initCommands(context);
   } catch (error) {

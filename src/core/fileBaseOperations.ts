@@ -1,7 +1,5 @@
 import { FileSystem } from './fs';
-import { window } from 'vscode';
 import { Readable } from 'stream';
-import logger from '../logger';
 
 interface FileOption {
   mode?: number;
@@ -53,14 +51,21 @@ export function createDir(path: string, fs: FileSystem, option): Promise<void> {
 }
 
 export async function createFile(path: string, fs: FileSystem, option): Promise<void> {
+  let exists = false;
   try {
     await fs.lstat(path);
-    logger.warn(`Can't create file becase file already exist`);
-    window.showErrorMessage(`Can't create file becase file already exist`);
-    return;
+    exists = true;
   } catch {
     // lstat throwing is the expected path here: the file does not exist yet,
     // which is exactly the precondition for creating it.
+  }
+
+  if (exists) {
+    // Previously this showed a VS Code error dialog and then returned as if it
+    // had succeeded, so the caller could not tell that nothing happened -- and
+    // a core file operation owned a piece of the UI. Throwing reaches the user
+    // through the command's own reportError, and reports the failure honestly.
+    throw new Error(`Can't create "${path}" because it already exists.`);
   }
 
   const targetFd = await fs.open(path, 'w');

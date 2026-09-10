@@ -2,7 +2,6 @@ import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
 import { CONFIG_FILENAME } from '../constants';
-import { upath } from '../core';
 
 export function isValidFile(uri: vscode.Uri) {
   return uri.scheme === 'file';
@@ -13,9 +12,8 @@ export function isConfigFile(uri: vscode.Uri) {
   return filename === CONFIG_FILENAME;
 }
 
-export function fileDepth(file: string) {
-  return upath.normalize(file).split('/').length;
-}
+// Pure, so it lives in core; re-exported for the existing call sites.
+export { fileDepth } from '../core/util/paths';
 
 export function makeTmpFile(option): Promise<string> {
   return new Promise((resolve, reject) => {

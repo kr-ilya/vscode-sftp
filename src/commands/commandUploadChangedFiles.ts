@@ -123,8 +123,8 @@ async function handleCommand(hint: any) {
     }
   }));
 
-  logger.log('');
-  logger.log('------ Upload Changed Files Result ------');
+  logger.info('');
+  logger.info('------ Upload Changed Files Result ------');
   outputGroup('create', creates, c => simplifyPath(c.uri.fsPath));
   outputGroup('upload', uploads, c => simplifyPath(c.uri.fsPath));
   outputGroup(
@@ -140,9 +140,9 @@ function outputGroup<T>(label: string, items: T[], formatItem: (x: T) => string)
     return;
   }
 
-  logger.log(`${label.toUpperCase()}:`);
-  logger.log(items.map(i => formatItem(i)).join('\n'));
-  logger.log('');
+  logger.info(`${label.toUpperCase()}:`);
+  logger.info(items.map(i => formatItem(i)).join('\n'));
+  logger.info('');
 }
 
 async function getRepository(git: GitAPI): Promise<Repository | undefined> {

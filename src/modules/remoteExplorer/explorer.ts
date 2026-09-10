@@ -5,7 +5,7 @@ import {
   COMMAND_REMOTEEXPLORER_REFRESH_ACTIVE_FILE,
   COMMAND_REMOTEEXPLORER_VIEW_CONTENT,
 } from '../../constants';
-import { UResource } from '../../core';
+import UResource from '../../uResource';
 import { toRemotePath } from '../../helper';
 import { REMOTE_SCHEME } from '../../constants';
 import { getFileService } from '../serviceManager';

@@ -2,7 +2,7 @@ import { Readable } from 'stream';
 import * as fileOperations from './fileBaseOperations';
 import { FileSystem, FileType } from './fs';
 import { Task } from './scheduler';
-import logger from '../logger';
+import logger from './logger';
 
 let hasWarnedModifedTimePermission = false;
 

@@ -1,6 +1,6 @@
 import PQueue from 'p-queue';
 import { Readable } from 'stream';
-import logger from '../../logger';
+import logger from '../logger';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client';

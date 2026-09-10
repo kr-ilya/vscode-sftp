@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import logger from '../logger';
 import { realpathSync } from 'fs';
 import app from '../app';
+import { fileContentCache } from '../core/fileContentCache';
 import StatusBarItem from '../ui/statusBarItem';
 import { onDidOpenTextDocument, onDidSaveTextDocument, showConfirmMessage } from '../host';
 import { readConfigsFromFile } from './config';
@@ -100,8 +101,8 @@ function watchWorkspace({
     }
 
     // remove staled cache
-    if (app.fsCache.has(uri.fsPath)) {
-      app.fsCache.delete(uri.fsPath);
+    if (fileContentCache.has(uri.fsPath)) {
+      fileContentCache.delete(uri.fsPath);
     }
 
     if (isConfigFile(uri)) {

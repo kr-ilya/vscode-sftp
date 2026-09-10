@@ -1,4 +1,4 @@
-import { UResource } from '../core';
+import UResource from '../uResource';
 import app from '../app';
 import { COMMAND_REVEAL_IN_REMOTE_EXPLORER } from '../constants';
 import { checkFileCommand } from './abstract/createCommand';

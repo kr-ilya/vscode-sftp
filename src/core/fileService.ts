@@ -2,11 +2,9 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sshConfig from 'ssh-config';
-import app from '../app';
-import logger from '../logger';
-import { getUserSetting } from '../host';
-import { replaceHomePath, resolvePath } from '../helper';
-import { SETTING_KEY_REMOTE } from '../constants';
+import { fileContentCache } from './fileContentCache';
+import logger from './logger';
+import { replaceHomePath, resolvePath } from './util/paths';
 import upath from './upath';
 import Ignore from './ignore';
 import { FileSystem } from './fs';
@@ -123,7 +121,7 @@ type ConfigValidator = (x: unknown) => { message: string } | undefined;
 const DEFAULT_SSHCONFIG_FILE = '~/.ssh/config';
 
 function filesIgnoredFromConfig(config: FileServiceConfig): string[] {
-  const cache = app.fsCache;
+  const cache = fileContentCache;
   const ignore: string[] =
     config.ignore && config.ignore.length ? config.ignore : [];
 
@@ -185,14 +183,32 @@ function setConfigValue(config, key, value) {
   }
 }
 
+/**
+ * Looks up a named remote from the user's settings.
+ *
+ * `remote: "my-server"` in a config pulls its connection details from a
+ * user-level setting rather than the workspace file. Reading that setting is an
+ * editor capability, so it is injected: core states the shape it needs, and the
+ * editor layer supplies it at activation.
+ *
+ * Unconfigured, no named remote resolves -- which surfaces as the same clear
+ * "can't find remote" error a genuine typo would produce.
+ */
+export type NamedRemoteResolver = (name: string) => Record<string, any> | undefined;
+
+let resolveNamedRemote: NamedRemoteResolver = () => undefined;
+
+export function setNamedRemoteResolver(resolver: NamedRemoteResolver): void {
+  resolveNamedRemote = resolver;
+}
+
 function mergeConfigWithExternalRefer(
   config: FileServiceConfig
 ): FileServiceConfig {
   const copyed = Object.assign({}, config);
 
   if (config.remote) {
-    const remoteMap = getUserSetting(SETTING_KEY_REMOTE);
-    const remote = remoteMap.get<Record<string, any>>(config.remote);
+    const remote = resolveNamedRemote(config.remote);
     if (!remote) {
       throw new Error(`Can't not find remote "${config.remote}"`);
     }
@@ -220,7 +236,7 @@ function mergeConfigWithExternalRefer(
     config.sshConfigPath || DEFAULT_SSHCONFIG_FILE
   );
 
-  const cache = app.fsCache;
+  const cache = fileContentCache;
   let sshConfigContent;
   if (cache.has(sshConfigPath)) {
     sshConfigContent = cache.get(sshConfigPath);
@@ -385,6 +401,7 @@ export default class FileService {
   private _transferSchedulers: TransferScheduler[] = [];
   private _config: FileServiceConfig;
   private _configValidator: ConfigValidator;
+  private _activeProfileProvider: () => string | undefined | null = () => undefined;
   private _watcherService: WatcherService = {
     create() {
       /* do nothing  */
@@ -418,6 +435,15 @@ export default class FileService {
 
   setConfigValidator(configValidator: ConfigValidator) {
     this._configValidator = configValidator;
+  }
+
+  /**
+   * Supplies the currently selected profile. Injected rather than read from the
+   * application singleton, so core does not depend on the UI layer and tests can
+   * drive profile selection directly.
+   */
+  setActiveProfileProvider(provider: () => string | undefined | null) {
+    this._activeProfileProvider = provider;
   }
 
   setWatcherService(watcherService: WatcherService) {
@@ -531,7 +557,7 @@ export default class FileService {
     return createRemoteIfNoneExist(getHostInfo(config));
   }
 
-  getConfig(useProfile = app.state.profile): ServiceConfig {
+  getConfig(useProfile = this._activeProfileProvider()): ServiceConfig {
     let config = this._config;
     const hasProfile =
       config.profiles && Object.keys(config.profiles).length > 0;
@@ -554,7 +580,7 @@ export default class FileService {
     if (error) {
       let errorMsg = `Config validation fail: ${error.message}.`;
       // tslint:disable-next-line triple-equals
-      if (hasProfile && app.state.profile == null) {
+      if (hasProfile && this._activeProfileProvider() == null) {
         errorMsg += ' You might want to set a profile first.';
       }
       throw new Error(errorMsg);

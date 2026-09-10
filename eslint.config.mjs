@@ -30,6 +30,27 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    // src/core must not depend on the editor. The transitive version of this
+    // check -- which is the one that actually catches regressions -- lives in
+    // scripts/check-core-purity.mjs and runs in CI; this catches the direct
+    // case at the moment of typing it.
+    files: ['src/core/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'vscode',
+              message:
+                'src/core must stay free of the editor API. Declare the capability core needs and have src/modules/coreHost.ts supply it.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // sshClient hooks ssh2's internal file-descriptor calls by wrapping
     // arbitrary callbacks, which needs `arguments` and a `this` alias to stay
     // transparent to the wrapped function. Rewriting that to rest parameters is

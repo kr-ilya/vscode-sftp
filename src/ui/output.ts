@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import app from '../app';
 import { EXTENSION_NAME } from '../constants';
 import StatusBarItem from './statusBarItem';
+import { setLogSink, setLogLevel, formatRecord } from '../core/logger';
+import { getExtensionSetting } from '../modules/ext';
 
 let isShow = false;
 const outputChannel = vscode.window.createOutputChannel(EXTENSION_NAME);
@@ -43,4 +45,20 @@ export function print(...args) {
     .join(' ');
 
   outputChannel.appendLine(msg);
+}
+
+/**
+ * Points the core logger at the output channel.
+ *
+ * Called once from activate(). Until then the core logger buffers, so records
+ * emitted while modules are still initialising are not lost -- which is exactly
+ * when the interesting ones happen.
+ *
+ * The level is read here rather than at module load, which is what made the
+ * `debug` setting require a window reload to take effect.
+ */
+export function installLogSink() {
+  const setting = getExtensionSetting();
+  setLogLevel(setting.debug || setting.printDebugLog ? 'trace' : 'info');
+  setLogSink({ write: record => outputChannel.appendLine(formatRecord(record)) });
 }
