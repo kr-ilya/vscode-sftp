@@ -1,0 +1,135 @@
+# Release pipeline.
+#
+# Branch model: `develop` integrates, `main` is the release branch. A release is
+# cut by merging develop -> main and pushing a `v*` tag on main; this workflow
+# fires on that tag.
+#
+# Publishing is scaffolded but OFF by default -- both publish jobs are gated on
+# repository variables, so tagging produces a GitHub Release with the .vsix
+# attached and nothing else until those are deliberately switched on.
+#
+# Marketplace auth is Microsoft Entra ID with workload identity federation, not
+# a PAT: Azure DevOps retires global PATs on 2026-12-01, so building this on a
+# PAT now would mean rebuilding it before the first year is out.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and package
+    # Linux only: packaging from Windows loses POSIX attributes, executable bit
+    # included.
+    runs-on: ubuntu-latest
+    outputs:
+      vsix: ${{ steps.pack.outputs.vsix }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      # The full gate runs again here rather than trusting the CI run on the
+      # merge commit: a tag can point anywhere.
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Check tag matches package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag does not match package.json version $pkg" >&2
+            exit 1
+          fi
+
+      - id: pack
+        run: |
+          name="syncx-${GITHUB_REF_NAME#v}.vsix"
+          npx vsce package --out "$name"
+          echo "vsix=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the packaged bundle
+        run: |
+          rm -rf .vsix-unpacked
+          unzip -q "${{ steps.pack.outputs.vsix }}" -d .vsix-unpacked
+          test ! -d .vsix-unpacked/extension/node_modules \
+            || (echo "node_modules leaked into the .vsix; see .vscodeignore" && exit 1)
+          node scripts/smoke.mjs .vsix-unpacked/extension/dist/extension.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: ${{ steps.pack.outputs.vsix }}
+
+  github-release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: vsix
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ needs.build.outputs.vsix }}
+          generate_release_notes: true
+
+  publish-marketplace:
+    name: VS Code Marketplace
+    needs: [build, github-release]
+    # Set repository variable PUBLISH_MARKETPLACE=true to enable. Requires the
+    # Entra ID federated credential and the AZURE_* variables below.
+    if: vars.PUBLISH_MARKETPLACE == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for OIDC federation; no secret is stored
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v5
+        with:
+          name: vsix
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - run: npx vsce publish --azure-credential --packagePath "${{ needs.build.outputs.vsix }}"
+
+  publish-openvsx:
+    name: Open VSX
+    needs: [build, github-release]
+    # Set repository variable PUBLISH_OPENVSX=true and secret OVSX_PAT to enable.
+    if: vars.PUBLISH_OPENVSX == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v5
+        with:
+          name: vsix
+      - run: npx ovsx publish "${{ needs.build.outputs.vsix }}" --pat "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
