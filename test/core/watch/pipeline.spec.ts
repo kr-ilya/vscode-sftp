@@ -194,6 +194,69 @@ describe('scenario 6 and 7: git checkout', () => {
   });
 });
 
+describe('switching branches uploads exactly what differs', () => {
+  // Spelled out because the shorthand "a checkout should not cause uploads" is
+  // wrong and easy to say. With autoUpload on, a branch switch *is* meant to
+  // synchronise; the point of the gate is that it sends what actually changed
+  // rather than the whole tree.
+  test('changed, unchanged, and newly added files are each handled correctly', async () => {
+    const files: Record<string, { content: string; mtimeMs: number }> = {
+      // git rewrote it and the bytes differ -> must be sent
+      '/w/changed.ts': { content: 'feature-version', mtimeMs: 900 },
+      // git rewrote it but the bytes are the same -> the server already has them
+      '/w/rewritten-same.ts': { content: 'shared', mtimeMs: 900 },
+      // git never touched it; included to show it is inert even if an event fires
+      '/w/untouched.ts': { content: 'stable', mtimeMs: 100 },
+      // exists only on the target branch -> nothing recorded, so it is new
+      '/w/added-on-branch.ts': { content: 'brand new', mtimeMs: 900 },
+    };
+
+    const { deps, store } = setup(files);
+    const known: Array<[string, string, number]> = [
+      ['/w/changed.ts', 'main-version', 100],
+      ['/w/rewritten-same.ts', 'shared', 100],
+      ['/w/untouched.ts', 'stable', 100],
+    ];
+    for (const [path, hash, mtimeMs] of known) {
+      store.set(keyer(path), recordFrom(
+        { type: 'file', size: hash.length, mtimeMs, ino: 1, dev: 1 },
+        { algorithm: 'sha256', hash },
+        0
+      ));
+    }
+
+    const outcomes = await processBatch(Object.keys(files).map(p => event(p)), deps);
+
+    expect(outcomes.map(o => o.path).sort()).toEqual([
+      '/w/added-on-branch.ts',
+      '/w/changed.ts',
+    ]);
+    expect(outcomes.every(o => o.decision.action === 'upload')).toBe(true);
+  });
+
+  test('switching back sends the file again, because the server now holds the other version', async () => {
+    // The store records what was last put on the server, not what the file
+    // originally was -- so a round trip is not mistaken for "no change".
+    const { deps, store } = setup({ '/w/a.ts': { content: 'main-version', mtimeMs: 1000 } });
+    store.set(keyer('/w/a.ts'), recordFrom(
+      { type: 'file', size: 15, mtimeMs: 900, ino: 1, dev: 1 },
+      { algorithm: 'sha256', hash: 'feature-version' },
+      0
+    ));
+
+    const outcomes = await processBatch([event('/w/a.ts')], deps);
+    expect(outcomes.map(o => o.decision.action)).toEqual(['upload']);
+  });
+
+  test('a file deleted on the target branch is removed remotely when autoDelete is on', async () => {
+    const { deps } = setup({}, {
+      policy: { autoUpload: true, autoDelete: true, followSymlinks: false },
+    });
+    const outcomes = await processBatch([event('/w/gone.ts', 'delete')], deps);
+    expect(outcomes.map(o => o.decision.action)).toEqual(['delete-remote']);
+  });
+});
+
 describe('scenario 4: directories', () => {
   test('a change on a directory produces no outcome at all', async () => {
     const { deps } = setup({ '/w/src': { content: '', mtimeMs: 100, type: 'directory' } });
