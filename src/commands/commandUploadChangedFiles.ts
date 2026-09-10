@@ -74,7 +74,11 @@ async function handleCommand(hint: any) {
       continue;
     }
 
-    switch (change.status) {
+    // `change.status` is typed by git.d.ts's ambient const enum, which is a
+  // different nominal type from the runtime `Status` we declare in
+  // modules/git (see the comment there). Both are the same numbers; widen
+  // to `number` once here rather than casting at every case.
+  switch (change.status as number) {
       case Status.INDEX_MODIFIED:
       case Status.MODIFIED:
         uploads.push(change);

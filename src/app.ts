@@ -1,4 +1,4 @@
-import * as LRU from 'lru-cache';
+import LRU from 'lru-cache';
 import StatusBarItem from './ui/statusBarItem';
 import { COMMAND_TOGGLE_OUTPUT } from './constants';
 import AppState from './modules/appState';

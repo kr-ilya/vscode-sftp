@@ -1,11 +1,14 @@
-*
-*/**
-**/.DS_Store
-!node_modules/**/*
+# Allow-list. This is the other half of the bundling decision in
+# scripts/build.mjs: everything except `vscode` is bundled into
+# dist/extension.js, so node_modules must NOT ship. If build.mjs ever gains an
+# `external` entry other than vscode, this file has to grow a matching
+# !node_modules/... line or the extension will fail at first connect with
+# "Cannot find module". The two files change together, always.
+**
 !dist/extension.js
 !package.json
 !README.md
 !CHANGELOG.md
 !LICENSE
-!resources/**/*
-!schema/**/*
+!resources/**
+!schema/**

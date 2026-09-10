@@ -1,4 +1,4 @@
-import * as PQueue from 'p-queue';
+import PQueue from 'p-queue';
 import { Readable } from 'stream';
 import logger from '../../logger';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
@@ -210,7 +210,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }
 
     switch (err.code) {
-      case 550:
+      case 550: {
         // Hooray, exists!
         if (err.message.toLowerCase().indexOf('file exists') >= 0) {
           return;
@@ -226,6 +226,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         await this._ensureDir(parentPath, false);
         await this.mkdir(dir);
         break;
+      }
 
       // In the case of any other error, just see if there's a dir
       // there already.  If so, then hooray!  If not, then something

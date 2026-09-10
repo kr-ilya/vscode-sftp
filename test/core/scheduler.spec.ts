@@ -1,4 +1,5 @@
-const Scheduler = require('../../src/core/scheduler').default;
+import { describe, test, expect } from 'vitest';
+import Scheduler from '../../src/core/scheduler';
 
 const randomInt = function(min, max) {
   if (max === undefined) {
@@ -13,7 +14,7 @@ const randomInt = function(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
 };
 const delay = millisecends =>
-  new Promise(resolve => {
+  new Promise<void>(resolve => {
     setTimeout(() => {
       resolve();
     }, millisecends);
@@ -48,7 +49,7 @@ describe('scheduler', () => {
     expect(queue.pendingCount).toEqual(2);
   });
 
-  test('.add() - concurrency: 1', done => {
+  test('.add() - concurrency: 1', () => new Promise<void>(done => {
     const input = [[10, 30], [20, 20], [30, 10]];
 
     const startTime = new Date().getTime();
@@ -59,9 +60,9 @@ describe('scheduler', () => {
       expect(50 <= time && time <= 100).toBeTruthy();
       done();
     });
-  });
+  }));
 
-  test('.add() - concurrency: 5', done => {
+  test('.add() - concurrency: 5', () => new Promise<void>(done => {
     const concurrency = 5;
     const queue = new Scheduler({ concurrency });
     let running = 0;
@@ -79,10 +80,10 @@ describe('scheduler', () => {
     );
 
     queue.onIdle(done);
-  });
+  }));
 
-  test('.add() - priority', done => {
-    const result = [];
+  test('.add() - priority', () => new Promise<void>(done => {
+    const result: any[] = [];
     const queue = new Scheduler({ concurrency: 1 });
     queue.add(wrapTask(async () => result.push(0)), { priority: 0 });
     queue.add(wrapTask(async () => result.push(1)), { priority: 1 });
@@ -92,7 +93,7 @@ describe('scheduler', () => {
       expect(result).toEqual([0, 3, 1, 2]);
       done();
     });
-  });
+  }));
 
   test('.addAll()', () => {
     const queue = new Scheduler();
@@ -103,9 +104,9 @@ describe('scheduler', () => {
     expect(queue.pendingCount).toEqual(2);
   });
 
-  test('onTaskDone', done => {
+  test('onTaskDone', () => new Promise<void>(done => {
     const queue = new Scheduler({ concurrency: 1 });
-    const result = [];
+    const result: any[] = [];
     const tasks = [{ run: () => delay(10) }, { run: () => 'sync 1' }, { run: () => 'sync 2' }];
     queue.addAll(tasks);
     queue.onTaskDone((err, t) => {
@@ -117,24 +118,23 @@ describe('scheduler', () => {
         done();
       }
     });
-  });
+  }));
 
-  test('onTaskDone(error)', done => {
+  test('onTaskDone(error)', () => new Promise<void>(done => {
     const queue = new Scheduler({ concurrency: 2 });
     const task = { run: () => Promise.reject(new Error('error')) };
     queue.add(task);
     queue.onTaskDone((err, t) => {
       expect(err).toBeDefined();
-      expect(err.message).toEqual('error');
+      expect(err!.message).toEqual('error');
       expect(t).toBe(task);
       done();
     });
-  });
+  }));
 
-  test('onIdle', done => {
+  test('onIdle', () => new Promise<void>(done => {
     const queue = new Scheduler({ concurrency: 1 });
-    const task = { run: () => Promise.reject(new Error('error')) };
-    const result = [];
+    const result: any[] = [];
     queue.add(wrapTask(() => delay(10).then(_ => result.push(1))));
     queue.add(wrapTask(() => delay(20).then(_ => result.push(2))));
     queue.add(wrapTask(() => delay(30).then(_ => result.push(3))));
@@ -142,7 +142,7 @@ describe('scheduler', () => {
       expect(result).toEqual([1, 2, 3]);
       done();
     });
-  });
+  }));
 
   test('enforce number in options.concurrency', () => {
     expect(() => {

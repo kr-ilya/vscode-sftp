@@ -83,21 +83,22 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
   })
 }
 
-export default function createFileHandler<T>(
+export default function createFileHandler<T extends object>(
   handlerOption: FileHandlerOption<T>
 ): (ctx: FileHandlerContext | Uri, option?: Partial<T>) => Promise<void> {
-  async function fileHandle(ctx: Uri | FileHandlerContext, option?: T) {
+  async function fileHandle(ctx: Uri | FileHandlerContext, option?: Partial<T>) {
     const handleCtx = ctx instanceof Uri ? handleCtxFromUri(ctx) : ctx;
     const { target } = handleCtx;
 
-    const invokeOption = handlerOption.transformOption
+    const invokeOption: T = handlerOption.transformOption
       ? handlerOption.transformOption.call(handleCtx)
-      : {};
+      : ({} as T);
     if (option) {
       Object.assign(invokeOption, option);
     }
 
-    if (invokeOption.ignore && invokeOption.ignore(target.localFsPath)) {
+    const ignore = (invokeOption as { ignore?: (p: string) => boolean }).ignore;
+    if (ignore && ignore(target.localFsPath)) {
       return;
     }
 

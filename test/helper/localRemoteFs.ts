@@ -4,7 +4,9 @@ import FileSystem, { FileStats } from '../../src/core/fs/fileSystem';
 import localfs from '../../src/core/localFs';
 import RemoteFileSystem from '../../src/core/fs/remoteFileSystem';
 
-// @ts-ignore
+// RemoteFileSystem's abstract members are supplied by the defineProperty loop
+// at the bottom of this file, which TypeScript cannot see.
+// @ts-expect-error -- abstract members are installed at runtime below
 export default class LocalRemoteFileSystem extends RemoteFileSystem {
   _createClient() {
     return {};

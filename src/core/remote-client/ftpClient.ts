@@ -1,4 +1,4 @@
-import * as Client from 'ftp';
+import Client from 'ftp';
 import RemoteClient, { ConnectOption } from './remoteClient';
 
 // tslint:disable
@@ -10,16 +10,16 @@ Client.prototype._send = function(cmd: string, cb: (err: Error) => void, promote
 
     if (cmd === 'ABOR') {
       if (this._pasvSocket) this._pasvSocket.aborting = true;
-      this._debug && this._debug('[connection] > ' + cmd);
+      if (this._debug) this._debug('[connection] > ' + cmd);
       this._socket.write(cmd + '\r\n');
       return;
     }
   }
-  var queueLen = this._queue.length;
+  const queueLen = this._queue.length;
   if (!this._curReq && queueLen && this._socket && this._socket.readable) {
     this._curReq = this._queue.shift();
     if (this._curReq.cmd !== 'ABOR') {
-      this._debug && this._debug('[connection] > ' + this._curReq.cmd);
+      if (this._debug) this._debug('[connection] > ' + this._curReq.cmd);
       this._socket.write(this._curReq.cmd + '\r\n');
     }
   } else if (!this._curReq && !queueLen && this._ending) this._reset();

@@ -77,14 +77,11 @@ export default abstract class RemoteFileSystem extends FileSystem {
   }
 
   async readFile(path: string, option?: FileOption): Promise<string | Buffer> {
-    return new Promise<string | Buffer>(async (resolve, reject) => {
-      let stream;
-      try {
-        stream = await this.get(path, option);
-      } catch (error) {
-        return reject(error);
-      }
+    // `get` is awaited outside the executor: an async executor swallows any
+    // rejection thrown after its first await, so the promise would hang.
+    const stream = await this.get(path, option);
 
+    return new Promise<string | Buffer>((resolve, reject) => {
       const arr: Buffer[] = [];
       const onData = chunk => {
         arr.push(chunk);
@@ -95,7 +92,11 @@ export default abstract class RemoteFileSystem extends FileSystem {
         }
 
         const buffer = Buffer.concat(arr);
-        resolve(option && option.encoding ? buffer.toString(option.encoding) : buffer);
+        resolve(
+          option && option.encoding
+            ? buffer.toString(option.encoding as BufferEncoding)
+            : buffer
+        );
       };
 
       stream.on('data', onData);

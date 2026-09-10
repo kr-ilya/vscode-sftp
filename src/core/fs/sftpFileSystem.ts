@@ -20,7 +20,6 @@ interface WriteStream extends Writable {
   path: string;
   flags: string;
   mode: number;
-  destroy(): void;
   close(): void;
 }
 
@@ -291,12 +290,13 @@ export default class SFTPFileSystem extends RemoteFileSystem {
     }
 
     switch (err.code) {
-      case 2:
+      case 2: {
         const parentPath = this.pathResolver.dirname(dir);
         if (parentPath === dir) throw err;
         await this.ensureDir(parentPath);
         await this.mkdir(dir);
         break;
+      }
 
       // In the case of any other error, just see if there's a dir
       // there already.  If so, then hooray!  If not, then something

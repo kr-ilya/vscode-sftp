@@ -1,4 +1,5 @@
-const Joi = require('joi');
+import { describe, test, expect } from 'vitest';
+import Joi from 'joi';
 
 const nullable = schema => schema.optional().allow(null);
 
@@ -43,7 +44,7 @@ const configScheme = {
 
 describe("validation config", () => {
   test("default config", () => {
-    const config = {
+    const config: any = {
       host: 'host',
       port: 22,
       username: 'username',
@@ -82,7 +83,7 @@ describe("validation config", () => {
   });
 
   test("partial config", () => {
-    const config = {
+    const config: any = {
       host: 'host',
       port: 22,
       username: 'username',
@@ -115,7 +116,7 @@ describe("validation config", () => {
 
   describe("key validaiton", () => {
     test("protocol must be one of ['sftp', 'ftp']", () => {
-      const config = {
+      const config: any = {
         host: 'host',
         port: 22,
         username: 'username',
@@ -151,7 +152,7 @@ describe("validation config", () => {
     });
 
     test("watcher files must be false or string", () => {
-      const config = {
+      const config: any = {
         host: 'host',
         port: 22,
         username: 'username',
@@ -211,7 +212,7 @@ describe("validation config", () => {
     });
 
     test("ignore must be an array of string", () => {
-      const config = {
+      const config: any = {
         host: 'host',
         port: 22,
         username: 'username',
@@ -253,7 +254,7 @@ describe("validation config", () => {
     });
 
     test("pass", () => {
-      const config = {
+      const config: any = {
         host: 'host',
         port: 22,
         username: 'username',

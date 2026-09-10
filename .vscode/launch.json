@@ -1,4 +1,10 @@
-// A launch configuration that compiles the extension and then opens it inside a new window
+// Compiles the extension and opens it in a new window.
+//
+// The "Launch Tests" configuration that used to sit here was removed: it
+// pointed at ${workspaceRoot}/out/test, which nothing ever produced (tsconfig
+// excludes test/, and the prelaunch task runs the bundler, not tsc). Unit tests
+// run with `npm test` (vitest); an extension-host test configuration comes back
+// when @vscode/test-electron is wired up.
 {
     "version": "0.1.0",
     "configurations": [
@@ -11,17 +17,6 @@
             "stopOnEntry": false,
             "sourceMaps": true,
             "outFiles": [ "${workspaceRoot}/dist/**/*.js" ],
-            "preLaunchTask": "npm"
-        },
-        {
-            "name": "Launch Tests",
-            "type": "extensionHost",
-            "request": "launch",
-            "runtimeExecutable": "${execPath}",
-            "args": ["--extensionDevelopmentPath=${workspaceRoot}", "--extensionTestsPath=${workspaceRoot}/out/test" ],
-            "stopOnEntry": false,
-            "sourceMaps": true,
-            "outFiles": [ "${workspaceRoot}/out/test/**/*.js" ],
             "preLaunchTask": "npm"
         }
     ]

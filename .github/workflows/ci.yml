@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint / typecheck / unit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Matches the Node that VS Code 1.90 (Electron 29) ships, so the
+          # toolchain type-checks against the runtime we actually target.
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # esbuild strips types without checking them, so this is the only thing
+      # standing between a type error and a shipped bundle.
+      - run: npm run typecheck
+      - run: npm test
+
+  package:
+    name: Package .vsix
+    # Linux only, deliberately: packaging from Windows loses POSIX file
+    # attributes (the executable bit among them).
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vsce package --out syncx.vsix
+      # Loads the built bundle with only `vscode` stubbed. Catches the
+      # externals/.vscodeignore mismatch that otherwise surfaces as
+      # "Cannot find module" at a user's first connect.
+      - name: Smoke test the packaged bundle
+        run: |
+          rm -rf .vsix-unpacked
+          unzip -q syncx.vsix -d .vsix-unpacked
+          test ! -d .vsix-unpacked/extension/node_modules \
+            || (echo "node_modules leaked into the .vsix; see .vscodeignore" && exit 1)
+          node scripts/smoke.mjs .vsix-unpacked/extension/dist/extension.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syncx-vsix
+          path: syncx.vsix

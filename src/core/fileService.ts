@@ -191,7 +191,7 @@ function mergeConfigWithExternalRefer(
     const remoteMap = getUserSetting(SETTING_KEY_REMOTE);
     const remote = remoteMap.get<Record<string, any>>(config.remote);
     if (!remote) {
-      throw new Error(`Can\'t not find remote "${config.remote}"`);
+      throw new Error(`Can't not find remote "${config.remote}"`);
     }
     const remoteKeyMapping = new Map([['scheme', 'protocol']]);
 
@@ -452,6 +452,9 @@ export default class FileService {
   }
 
   createTransferScheduler(concurrency): TransferScheduler {
+    // Required, not legacy style: the `transferScheduler` literal below uses
+    // method shorthand, so `this` inside run() is that object, not the service.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const fileService = this;
     const scheduler = new Scheduler({
       autoStart: false,

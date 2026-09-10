@@ -1,4 +1,5 @@
-const Trie = require('../src/modules/serviceManager/trie').default;
+import { describe, test, expect } from 'vitest';
+import Trie from '../src/modules/serviceManager/trie';
 
 describe('Trie Tests', () => {
   describe('find all values', () => {
@@ -187,7 +188,7 @@ describe('Trie Tests', () => {
 
       trie.remove('a/b/c/d');
 
-      expect(trie.root.getChildren().length).toEqual(0);
+      expect((trie as any).root.getChildren().length).toEqual(0);
     });
 
     test('multiple branch', () => {
@@ -198,10 +199,10 @@ describe('Trie Tests', () => {
       });
 
       trie.remove('a/b/c/d');
-      const node = trie.findNode(trie.root, trie.splitPath('a/b/c'));
+      const node = trie.findNode((trie as any).root, trie.splitPath('a/b/c'));
       
       expect(node).toBeTruthy();
-      expect(node.getChildren().map(n => n.value).sort()).toEqual([2, 3]);
+      expect((node as any).getChildren().map((n: any) => n.value).sort()).toEqual([2, 3]);
     });
 
     test('nested branch', () => {
@@ -212,8 +213,8 @@ describe('Trie Tests', () => {
 
       trie.remove('a/b/c/d');
 
-      expect(trie.findNode(trie.root, trie.splitPath('a/b'))).toBeTruthy();
-      expect(trie.findNode(trie.root, trie.splitPath('a/b/c'))).toBeFalsy();
+      expect(trie.findNode((trie as any).root, trie.splitPath('a/b'))).toBeTruthy();
+      expect(trie.findNode((trie as any).root, trie.splitPath('a/b/c'))).toBeFalsy();
     });
 
     test('nested branch -- top', () => {

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as debounce from 'lodash.debounce';
+import debounce from 'lodash.debounce';
 import logger from '../logger';
 import { isValidFile, fileDepth } from '../helper';
 import { upload, removeRemote } from '../fileHandlers';
