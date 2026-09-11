@@ -303,6 +303,11 @@
         "command": "syncx.watch.dryRun",
         "title": "Dry Run: Show What Would Be Uploaded",
         "category": "SyncX"
+      },
+      {
+        "command": "syncx.forgetPassword",
+        "title": "Forget Saved Password",
+        "category": "SyncX"
       }
     ],
     "menus": {

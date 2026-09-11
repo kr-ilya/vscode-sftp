@@ -38,6 +38,10 @@ export default class SSHClient extends RemoteClient {
   private _opendFdNum: number = 0;
   private _queuedFdRequireCall: Array<(...args: any[]) => any> = [];
 
+  get protocol(): string {
+    return 'sftp';
+  }
+
   _initClient() {
     return new Client();
   }

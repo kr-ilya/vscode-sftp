@@ -22,6 +22,7 @@ import {
 
 import commandCancelAllTransfer from './commandCancelAllTransfer';
 import commandConfig from './commandConfig';
+import commandForgetPassword from './commandForgetPassword';
 import commandListActiveFolder from './commandListActiveFolder';
 import commandOpenSshConnection from './commandOpenSshConnection';
 import commandSetProfile from './commandSetProfile';
@@ -70,6 +71,7 @@ export type CommandEntry = [string, any];
 export const plainCommands: CommandEntry[] = [
   ['CancelAllTransfer', commandCancelAllTransfer],
   ['Config', commandConfig],
+  ['ForgetPassword', commandForgetPassword],
   ['ListActiveFolder', commandListActiveFolder],
   ['OpenSshConnection', commandOpenSshConnection],
   ['SetProfile', commandSetProfile],

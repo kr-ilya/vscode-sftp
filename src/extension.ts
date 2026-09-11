@@ -8,6 +8,7 @@ import { installLogSink } from './ui/output';
 import { installCoreHost } from './modules/coreHost';
 import { initializeWatching } from './modules/watch/watcherService';
 import { initializeHostKeys } from './modules/ssh/hostKeys';
+import { initializeCredentials } from './modules/credentials';
 import { reportError } from './helper';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
@@ -40,6 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // watcher needs the context before any service is created.
   initializeWatching(context);
   initializeHostKeys(context);
+  initializeCredentials(context);
 
   try {
     initCommands(context);

@@ -1,3 +1,4 @@
+import type { CredentialIdentity, CredentialStore } from './credentials';
 import upath from './upath';
 import logger from './logger';
 import { ConnectOption } from './remote-client/remoteClient';
@@ -22,6 +23,10 @@ export interface RemoteFsHost {
   promptForPassword(prompt: string): Promise<string | undefined>;
   onConnecting(timeoutMs: number | undefined): void;
   onConnected(): void;
+  /** Where remembered passwords live. Absent means nothing is remembered. */
+  credentials?: CredentialStore;
+  /** Asked, after a password has worked, whether to keep it. */
+  offerToRemember?(identity: CredentialIdentity): Promise<boolean>;
 }
 
 let host: RemoteFsHost = {
@@ -104,6 +109,8 @@ class KeepAliveRemoteFs {
     this.pendingPromise = this.fs
       .connect(connectOption, {
         askForPasswd: prompt => host.promptForPassword(prompt),
+        credentials: host.credentials,
+        offerToRemember: host.offerToRemember,
       })
       .then(
         () => {

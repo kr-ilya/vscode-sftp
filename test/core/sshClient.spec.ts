@@ -2,6 +2,8 @@ import { describe, test, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import SSHClient from '../../src/core/remote-client/sshClient';
 import type { ConnectOption, Config } from '../../src/core/remote-client/remoteClient';
+import type { CredentialIdentity, CredentialStore } from '../../src/core/credentials';
+import { credentialKey } from '../../src/core/credentials';
 
 /**
  * Connection wiring, against a stand-in for ssh2's Client.
@@ -162,5 +164,157 @@ describe('authentication', () => {
     ).rejects.toBeTruthy();
 
     expect(client.fake.connectOptions).toBeNull();
+  });
+});
+
+/** An in-memory SecretStorage. */
+function makeStore(seed: Record<string, string> = {}) {
+  const values = new Map(Object.entries(seed));
+  const store: CredentialStore = {
+    async get(identity, kind) {
+      return values.get(credentialKey(identity, kind));
+    },
+    async store(identity, kind, value) {
+      values.set(credentialKey(identity, kind), value);
+    },
+    async forget(identity, kind) {
+      values.delete(credentialKey(identity, kind));
+    },
+  };
+  return { store, values };
+}
+
+/** Rejects until the expected password arrives, like a real server would. */
+class PickyClient extends FakeSsh2Client {
+  static expectedPassword = 'correct';
+
+  connect(options: Record<string, unknown>): this {
+    this.connectOptions = options;
+    if (options.password === PickyClient.expectedPassword) {
+      setImmediate(() => this.emit('ready'));
+    } else {
+      setImmediate(() => this.emit('error', new Error('All configured authentication methods failed')));
+    }
+    return this;
+  }
+}
+
+class PickySSHClient extends SSHClient {
+  _initClient() {
+    return new PickyClient();
+  }
+  get fake(): PickyClient {
+    return this._client as PickyClient;
+  }
+}
+
+describe('remembered passwords', () => {
+  const identity: CredentialIdentity = {
+    protocol: 'sftp',
+    host: 'example.com',
+    port: 22,
+    username: 'deploy',
+  };
+
+  test('a stored password is used without prompting', async () => {
+    const { store } = makeStore({ [credentialKey(identity, 'password')]: 'correct' });
+    const askForPasswd = vi.fn(async () => undefined);
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await client.connect(option({ password: undefined }), { askForPasswd, credentials: store });
+
+    expect(askForPasswd).not.toHaveBeenCalled();
+    expect(client.fake.connectOptions?.password).toBe('correct');
+  });
+
+  test('a password is offered for saving only after it has worked', async () => {
+    const { store, values } = makeStore();
+    const offerToRemember = vi.fn(async () => true);
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await client.connect(option({ password: undefined }), {
+      askForPasswd: async () => 'correct',
+      credentials: store,
+      offerToRemember,
+    });
+
+    expect(offerToRemember).toHaveBeenCalledOnce();
+    expect(values.get(credentialKey(identity, 'password'))).toBe('correct');
+  });
+
+  test('a rejected password is never saved', async () => {
+    // Otherwise a typo is stored and replayed on every subsequent connection.
+    const { store, values } = makeStore();
+    const offerToRemember = vi.fn(async () => true);
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await expect(
+      client.connect(option({ password: undefined }), {
+        askForPasswd: async () => 'wrong',
+        credentials: store,
+        offerToRemember,
+      })
+    ).rejects.toBeTruthy();
+
+    expect(offerToRemember).not.toHaveBeenCalled();
+    expect(values.size).toBe(0);
+  });
+
+  test('declining to save stores nothing', async () => {
+    const { store, values } = makeStore();
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await client.connect(option({ password: undefined }), {
+      askForPasswd: async () => 'correct',
+      credentials: store,
+      offerToRemember: async () => false,
+    });
+
+    expect(values.size).toBe(0);
+  });
+
+  test('a stored password that stopped working is dropped, and the user is asked', async () => {
+    // A password changed on the server must not lock the user out of their own
+    // machine by being retried forever.
+    const { store, values } = makeStore({ [credentialKey(identity, 'password')]: 'stale' });
+    const askForPasswd = vi.fn(async () => 'correct');
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await client.connect(option({ password: undefined }), {
+      askForPasswd,
+      credentials: store,
+      offerToRemember: async () => false,
+    });
+
+    expect(askForPasswd).toHaveBeenCalledOnce();
+    expect(values.has(credentialKey(identity, 'password'))).toBe(false);
+    expect(client.fake.connectOptions?.password).toBe('correct');
+  });
+
+  test('a password in the config is used as-is, and nothing is stored', async () => {
+    // Existing configs keep working exactly as before.
+    const { store, values } = makeStore();
+    const askForPasswd = vi.fn(async () => undefined);
+    const offerToRemember = vi.fn(async () => true);
+    const client = new PickySSHClient(option({ password: 'correct' }));
+
+    await client.connect(option({ password: 'correct' }), {
+      askForPasswd,
+      credentials: store,
+      offerToRemember,
+    });
+
+    expect(askForPasswd).not.toHaveBeenCalled();
+    expect(offerToRemember).not.toHaveBeenCalled();
+    expect(values.size).toBe(0);
+  });
+
+  test('with no store installed, the behaviour is exactly the old one', async () => {
+    const askForPasswd = vi.fn(async () => 'correct');
+    const client = new PickySSHClient(option({ password: undefined }));
+
+    await client.connect(option({ password: undefined }), { askForPasswd });
+
+    expect(askForPasswd).toHaveBeenCalledOnce();
   });
 });

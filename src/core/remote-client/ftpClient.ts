@@ -26,6 +26,10 @@ export default class FTPClient extends RemoteClient {
   private connected = false;
   private disconnectListeners: Array<(reason: string) => void> = [];
 
+  get protocol(): string {
+    return 'ftp';
+  }
+
   _initClient(): Client {
     // basic-ftp takes the per-operation timeout in the constructor and exposes
     // it read-only afterwards, so the configured value has to be known here.
