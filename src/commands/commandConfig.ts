@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { COMMAND_CONFIG } from '../constants';
-import { newConfig } from '../modules/config';
+import { runSetup } from '../modules/setup';
 import {
   getWorkspaceFolders,
   showConfirmMessage,
@@ -17,7 +17,7 @@ export default checkCommand({
     const workspaceFolders = getWorkspaceFolders();
     if (!workspaceFolders) {
       const result = await showConfirmMessage(
-        'SFTP expects to work at a folder.',
+        'SyncX expects to work at a folder.',
         'Open Folder',
         'Ok'
       );
@@ -55,7 +55,7 @@ export default checkCommand({
     }
 
     if (workspaceFolders.length === 1) {
-      newConfig(workspaceFolders[0].uri.fsPath);
+      await runSetup(workspaceFolders[0].uri.fsPath);
       return;
     }
 
@@ -65,16 +65,13 @@ export default checkCommand({
       description: folder.uri.fsPath,
     }));
 
-    vscode.window
-      .showQuickPick(initDirs, {
-        placeHolder: 'Select a folder...',
-      })
-      .then(item => {
-        if (item === undefined) {
-          return;
-        }
+    const item = await vscode.window.showQuickPick(initDirs, {
+      placeHolder: 'Select a folder...',
+    });
+    if (item === undefined) {
+      return;
+    }
 
-        newConfig(item.value);
-      });
+    await runSetup(item.value);
   },
 });

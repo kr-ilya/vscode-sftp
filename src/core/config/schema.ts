@@ -107,11 +107,11 @@ const optionShape = {
 
 /** Connection endpoint. */
 const hostShape = {
-  host: z.string().describe('Hostname or IP address of the server.'),
+  host: z.string().min(1).describe('Hostname or IP address of the server.'),
   port: z.number().optional().describe('Port of the server.'),
-  username: z.string().describe('Username to authenticate as.'),
+  username: z.string().min(1).describe('Username to authenticate as.'),
   password: z.string().nullable().optional().describe('Password for password authentication.'),
-  remotePath: z.string().describe('Absolute path on the server to sync against.'),
+  remotePath: z.string().min(1).describe('Absolute path on the server to sync against.'),
   connectTimeout: z.number().optional().describe('How long to wait for the connection, in milliseconds.'),
 };
 

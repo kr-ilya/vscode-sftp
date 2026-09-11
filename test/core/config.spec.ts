@@ -40,6 +40,12 @@ describe('config validation', () => {
     }
   });
 
+  test.each(['host', 'username', 'remotePath'])('%s cannot be empty', field => {
+    // Present-but-empty used to pass, and then failed at connection time with a
+    // confusing error instead of at validation with a clear one.
+    expect(validateConfig({ ...minimal, [field]: '' })?.message).toContain(field);
+  });
+
   test('does not coerce types', () => {
     // joi ran with convert:false; a port given as a string is a mistake worth
     // surfacing, not something to silently paper over.
