@@ -34,6 +34,7 @@ export function setHostVerifierFactory(factory: HostVerifierFactory): void {
 export default class SSHClient extends RemoteClient {
   private sftp: any;
   private hoppingClients: SSHClient[];
+  private _ended = false;
   private _opendFdNum: number = 0;
   private _queuedFdRequireCall: Array<(...args: any[]) => any> = [];
 
@@ -324,8 +325,12 @@ export default class SSHClient extends RemoteClient {
         .on('error', err => {
           reject(new Error(`[${option.host}]: ${err.message}`));
         })
-        .on('close', this.end())
-        .on('end', this.end())
+        // `this.end()` rather than `this.end` -- and never `this.end()` as the
+        // argument, which calls it at wiring time and passes its return value.
+        // That is what upstream did: every SSH connection ended the client
+        // before connecting and then threw "listener must be a function".
+        .on('close', () => this.end())
+        .on('end', () => this.end())
         .connect({
           keepaliveInterval: 1000 * 30, // 30 secs, original
           // keepaliveInterval: 1000 * 600, // 10 mins
@@ -383,11 +388,18 @@ export default class SSHClient extends RemoteClient {
   }
 
   end() {
+    // Both 'close' and 'end' arrive for a single disconnection, and a caller may
+    // end explicitly as well, so this has to tolerate being called repeatedly.
+    if (this._ended) return;
+    this._ended = true;
+
     this._client.end();
 
     if (this.hoppingClients) {
-      // last connect first end
-      this.hoppingClients.reverse().forEach(client => client.end());
+      // Last connected, first ended. Copied rather than reversed in place:
+      // `reverse()` mutates, so a second call would walk the chain the wrong
+      // way round.
+      [...this.hoppingClients].reverse().forEach(client => client.end());
     }
   }
 
