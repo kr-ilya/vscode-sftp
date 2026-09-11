@@ -86,6 +86,25 @@ export default class RemoteTreeData
       return;
     }
 
+    // A targeted refresh needs the item's root, and there are two ordinary
+    // reasons for it to be missing. Neither is a failure of the operation that
+    // asked for the refresh, yet both used to reach the user as
+    // "Can't find config for remote resource ..." after every successful save.
+    if (!this._rootsMap) {
+      // Nothing has been built yet: either the view has never been opened, or
+      // the configuration was reloaded and dropped the cached tree. It will be
+      // rebuilt from the current configuration when the view next asks.
+      return;
+    }
+
+    if (!this.findRoot(item.resource.uri)) {
+      // The resource names a service the tree does not know. Reloading the
+      // configuration gives every service a new id, so a path captured before
+      // the reload still carries the old one. The tree is what is out of date,
+      // so refresh all of it rather than reporting an error.
+      return this.refresh();
+    }
+
     if (item.isDirectory) {
       this._onDidChangeFolder.fire(item);
 

@@ -5,31 +5,9 @@ import localFs from '../localFs';
 import { FileSystem, RemoteFileSystem, SFTPFileSystem } from '../fs';
 import logger from '../logger';
 import CustomError from '../customError';
+import { hostVerifierFor } from './hostVerification';
 
 let MAX_OPEN_FD_NUM = 222;
-
-/**
- * Verifies the server's host key.
- *
- * Injected, because core must not reach the editor to ask the user a question.
- * The default REFUSES rather than accepting: this is a security control, and a
- * control that fails open when its wiring breaks is worse than none, because it
- * looks like it is working. src/modules/coreHost.ts installs the real one.
- */
-export type HostVerifier = (key: Buffer, callback: (accepted: boolean) => void) => void;
-export type HostVerifierFactory = (host: string, port: number) => HostVerifier;
-
-let hostVerifierFactory: HostVerifierFactory = () => (_key, callback) => {
-  logger.error(
-    '[hostkey] no host key verifier is installed; refusing to connect. ' +
-      'This is a wiring bug -- see src/modules/coreHost.ts.'
-  );
-  callback(false);
-};
-
-export function setHostVerifierFactory(factory: HostVerifierFactory): void {
-  hostVerifierFactory = factory;
-}
 
 export default class SSHClient extends RemoteClient {
   private sftp: any;
@@ -354,7 +332,7 @@ export default class SSHClient extends RemoteClient {
           // machine-in-the-middle. Omitting hostHash means the raw key blob
           // arrives here, which is what lets the fingerprint be shown in
           // OpenSSH's own format.
-          hostVerifier: hostVerifierFactory(option.host, option.port ?? 22),
+          hostVerifier: hostVerifierFor(client, option.host, option.port ?? 22),
         });
     });
   }

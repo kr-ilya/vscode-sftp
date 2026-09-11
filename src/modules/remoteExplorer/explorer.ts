@@ -34,7 +34,7 @@ export default class RemoteExplorer {
     );
   }
 
-  refresh(item?: ExplorerItem) {
+  refresh(item?: ExplorerItem): Promise<void> {
     if (item && !UResource.isRemote(item.resource.uri)) {
       const uri = item.resource.uri;
       const fileService = getFileService(uri);
@@ -58,7 +58,7 @@ export default class RemoteExplorer {
       });
     }
 
-    this._treeDataProvider.refresh(item);
+    return this._treeDataProvider.refresh(item);
   }
 
   reveal(item: ExplorerItem): Thenable<void> {

@@ -31,24 +31,93 @@ function strict<T extends object>(namespace: string, members: T): T {
   }) as T;
 }
 
+/**
+ * A URI with the parts the extension actually reads.
+ *
+ * The query matters: remote resources carry their path and the id of the
+ * service they belong to there, and the tree keys its item map on it. A Uri
+ * that dropped the query -- as the first version of this fake did -- would make
+ * every one of those look identical.
+ */
 export class Uri {
+  readonly scheme: string;
+  readonly authority: string;
+  readonly path: string;
+  readonly query: string;
+  readonly fragment: string;
+  private readonly _fsPath?: string;
+
+  private constructor(parts: {
+    scheme: string;
+    authority?: string;
+    path?: string;
+    query?: string;
+    fragment?: string;
+    fsPath?: string;
+  }) {
+    this.scheme = parts.scheme;
+    this.authority = parts.authority ?? '';
+    this.path = parts.path ?? '';
+    this.query = parts.query ?? '';
+    this.fragment = parts.fragment ?? '';
+    this._fsPath = parts.fsPath;
+  }
+
   static file(fsPath: string): Uri {
-    return new Uri('file', fsPath);
+    return new Uri({ scheme: 'file', path: fsPath.split('\\').join('/'), fsPath });
   }
 
   static parse(value: string): Uri {
-    const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.*)$/.exec(value);
-    return match ? new Uri(match[1], match[2]) : new Uri('file', value);
+    const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(
+      value
+    );
+    if (!match) return Uri.file(value);
+
+    // VS Code decodes percent-encoding when it parses, which is what lets
+    // `querystring.parse(uri.query)` see the real values.
+    return new Uri({
+      scheme: match[1],
+      authority: decode(match[2]),
+      path: decode(match[3]),
+      query: decode(match[4]),
+      fragment: decode(match[5]),
+    });
   }
 
-  constructor(readonly scheme: string, readonly fsPath: string) {}
+  with(change: {
+    scheme?: string;
+    authority?: string;
+    path?: string;
+    query?: string;
+    fragment?: string;
+  }): Uri {
+    return new Uri({
+      scheme: change.scheme ?? this.scheme,
+      authority: change.authority ?? this.authority,
+      path: change.path ?? this.path,
+      query: change.query ?? this.query,
+      fragment: change.fragment ?? this.fragment,
+      fsPath: change.path === undefined ? this._fsPath : undefined,
+    });
+  }
 
-  get path(): string {
-    return this.fsPath.split('\\').join('/');
+  get fsPath(): string {
+    return this._fsPath ?? this.path;
   }
 
   toString(): string {
-    return `${this.scheme}://${this.path}`;
+    const query = this.query ? `?${this.query}` : '';
+    const fragment = this.fragment ? `#${this.fragment}` : '';
+    return `${this.scheme}://${this.authority}${this.path}${query}${fragment}`;
+  }
+}
+
+function decode(part: string | undefined): string {
+  if (!part) return '';
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
   }
 }
 

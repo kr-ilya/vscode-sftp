@@ -2,7 +2,7 @@ import app from '../app';
 import { promptForPassword, getUserSetting } from '../host';
 import { setRemoteFsHost } from '../core/remoteFs';
 import { setNamedRemoteResolver } from '../core/fileService';
-import { setHostVerifierFactory } from '../core/remote-client/sshClient';
+import { setHostVerifierFactory } from '../core/remote-client/hostVerification';
 import { credentialStore, offerToRemember } from './credentials';
 import { createHostVerifier } from './ssh/hostKeys';
 import { SETTING_KEY_REMOTE } from '../constants';

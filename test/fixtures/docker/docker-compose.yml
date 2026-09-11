@@ -8,9 +8,12 @@
 #   SYNCX_CONTRACT_SFTP=1 SYNCX_CONTRACT_FTP=1 npm test
 #   docker compose -f test/fixtures/docker/docker-compose.yml down -v
 #
-# Honest status: this file has not been executed yet. It is written from the
-# images' documented interfaces, not from a green run, and should be treated as
-# a first draft until someone brings it up.
+# These have now been run, and the contract suite passes against both.
+#
+# Restarting a stopped ftp container does not work: its entrypoint creates the
+# account on every start and fails with "adduser: user 'syncx' in use" against
+# the volume left behind. Recreate it (`down -v`, then `up`) rather than
+# `start`.
 
 services:
   sftp:
@@ -43,7 +46,11 @@ services:
       - '2121:21'
       - '21000-21010:21000-21010'
     healthcheck:
-      test: ['CMD-SHELL', 'nc -z localhost 21 || exit 1']
+      # BusyBox nc has no -z, and `localhost` does not resolve to anything
+      # listening in this image -- with either, the check can never pass and
+      # `up --wait` gives up on a server that is in fact running. Reading the
+      # banner also proves vsftpd is answering, not merely bound.
+      test: ['CMD-SHELL', 'nc -w 3 127.0.0.1 21 </dev/null | grep -q "^220 "']
       interval: 2s
       timeout: 2s
       retries: 30

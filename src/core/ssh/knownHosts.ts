@@ -69,9 +69,7 @@ export function parseKnownHosts(content: string, source: string): KnownHostEntry
       cursor += 1;
     }
 
-    const hostField = fields[cursor++];
-    const keyType = fields[cursor++];
-    const keyBase64 = fields[cursor++];
+    const [hostField, keyType, keyBase64] = fields.slice(cursor);
     if (!hostField || !keyType || !keyBase64) return;
 
     let key: Buffer;

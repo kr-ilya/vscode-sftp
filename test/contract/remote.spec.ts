@@ -2,7 +2,7 @@ import { describe } from 'vitest';
 import upath from '../../src/core/upath';
 import SFTPFileSystem from '../../src/core/fs/sftpFileSystem';
 import FTPFileSystem from '../../src/core/fs/ftpFileSystem';
-import { setHostVerifierFactory } from '../../src/core/remote-client/sshClient';
+import { setHostVerifierFactory } from '../../src/core/remote-client/hostVerification';
 import { runFileSystemContract, type ContractCapabilities } from './fileSystemContract';
 
 /**

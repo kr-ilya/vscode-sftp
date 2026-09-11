@@ -260,7 +260,16 @@ function mergeConfigWithExternalRefer(
     try {
       sshConfigContent = fs.readFileSync(sshConfigPath, 'utf8');
     } catch (error) {
-      logger.warn(error.message, `load ${sshConfigPath} failed`);
+      // Having no ~/.ssh/config is the normal state of most machines, so its
+      // absence is not a warning. A path the user named themselves is a
+      // different matter: if that one is missing, the defaults they expect to
+      // be applied silently are not being applied.
+      const askedForByName = Boolean(config.sshConfigPath);
+      if (askedForByName || error.code !== 'ENOENT') {
+        logger.warn(error.message, `load ${sshConfigPath} failed`);
+      } else {
+        logger.debug(`no ssh config at ${sshConfigPath}; continuing without one`);
+      }
       sshConfigContent = '';
     }
     cache.set(sshConfigPath, sshConfigContent);
