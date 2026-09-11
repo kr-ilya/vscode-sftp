@@ -2,95 +2,125 @@ import { describe } from 'vitest';
 import upath from '../../src/core/upath';
 import SFTPFileSystem from '../../src/core/fs/sftpFileSystem';
 import FTPFileSystem from '../../src/core/fs/ftpFileSystem';
-import { runFileSystemContract } from './fileSystemContract';
+import { setHostVerifierFactory } from '../../src/core/remote-client/sshClient';
+import { runFileSystemContract, type ContractCapabilities } from './fileSystemContract';
 
 /**
  * The same contract, against real servers.
  *
  * Skipped unless the corresponding environment variable is set, because these
- * need the containers in test/fixtures/docker to be up. `npm test` therefore
- * stays hermetic and fast, while the suite that actually proves SFTP and FTP
- * are interchangeable is one command away.
+ * need the containers in test/fixtures/docker to be up:
  *
- * Status: written, never executed. The docker fixtures have not been brought up
- * yet, so treat a first run as debugging the harness as much as the transport.
+ *   docker compose -f test/fixtures/docker/docker-compose.yml up -d --wait
+ *   SYNCX_CONTRACT_SFTP=1 SYNCX_CONTRACT_FTP=1 npm test
+ *
+ * `npm test` therefore stays hermetic and fast, while the suite that actually
+ * proves SFTP and FTP are interchangeable is one command away.
  */
+
+/** A round trip to a container is orders of magnitude slower than memory. */
+const REMOTE_TIMEOUT_MS = 30_000;
 
 const sftpEnabled = Boolean(process.env.SYNCX_CONTRACT_SFTP);
 const ftpEnabled = Boolean(process.env.SYNCX_CONTRACT_FTP);
 
+const sftpOption = {
+  host: process.env.SYNCX_CONTRACT_SFTP_HOST ?? '127.0.0.1',
+  port: Number(process.env.SYNCX_CONTRACT_SFTP_PORT ?? 2222),
+  username: process.env.SYNCX_CONTRACT_SFTP_USER ?? 'syncx',
+  password: process.env.SYNCX_CONTRACT_SFTP_PASSWORD ?? 'syncx-test',
+  debug: () => undefined,
+};
+
+const ftpOption = {
+  host: process.env.SYNCX_CONTRACT_FTP_HOST ?? '127.0.0.1',
+  port: Number(process.env.SYNCX_CONTRACT_FTP_PORT ?? 2121),
+  username: process.env.SYNCX_CONTRACT_FTP_USER ?? 'syncx',
+  password: process.env.SYNCX_CONTRACT_FTP_PASSWORD ?? 'syncx-test',
+  debug: () => undefined,
+};
+
+/**
+ * The host key check refuses by default when no verifier is installed -- that
+ * is the point of it, and the reason this suite could not connect until it said
+ * so explicitly. A throwaway container is exactly the case where accepting any
+ * key is correct, so the opt-in is here rather than a weaker default there.
+ */
+function acceptAnyHostKey(): void {
+  setHostVerifierFactory(() => (_key, callback) => callback(true));
+}
+
 describe.skipIf(!sftpEnabled)('sftp file system', () => {
   runFileSystemContract(async () => {
+    acceptAnyHostKey();
     const fs = new SFTPFileSystem(upath, {
-      clientOption: {
-        host: process.env.SYNCX_CONTRACT_SFTP_HOST ?? '127.0.0.1',
-        port: Number(process.env.SYNCX_CONTRACT_SFTP_PORT ?? 2222),
-        username: process.env.SYNCX_CONTRACT_SFTP_USER ?? 'syncx',
-        password: process.env.SYNCX_CONTRACT_SFTP_PASSWORD ?? 'syncx-test',
-        debug: () => undefined,
-      } as never,
+      clientOption: sftpOption as never,
       remoteTimeOffsetInHours: 0,
     });
 
     return {
       name: 'sftp',
       fs,
-      root: `/config/contract-${Date.now()}`,
+      // linuxserver/openssh-server puts the account's home at /config.
+      root: `${process.env.SYNCX_CONTRACT_SFTP_ROOT ?? '/config'}/contract-${Date.now()}`,
       // SFTP does all three; that is the baseline the FTP side is measured
       // against.
       capabilities: { symlinks: true, setTimes: true, chmod: true },
       async setup() {
-        await fs.connect(
-          {
-            host: process.env.SYNCX_CONTRACT_SFTP_HOST ?? '127.0.0.1',
-            port: Number(process.env.SYNCX_CONTRACT_SFTP_PORT ?? 2222),
-            username: process.env.SYNCX_CONTRACT_SFTP_USER ?? 'syncx',
-            password: process.env.SYNCX_CONTRACT_SFTP_PASSWORD ?? 'syncx-test',
-            debug: () => undefined,
-          } as never,
-          { askForPasswd: async () => undefined }
-        );
+        await fs.connect(sftpOption as never, { askForPasswd: async () => undefined });
       },
       async teardown() {
         fs.end();
       },
     };
-  });
+  }, REMOTE_TIMEOUT_MS);
 });
 
 describe.skipIf(!ftpEnabled)('ftp file system', () => {
   runFileSystemContract(async () => {
-    const option = {
-      host: process.env.SYNCX_CONTRACT_FTP_HOST ?? '127.0.0.1',
-      port: Number(process.env.SYNCX_CONTRACT_FTP_PORT ?? 2121),
-      username: process.env.SYNCX_CONTRACT_FTP_USER ?? 'syncx',
-      password: process.env.SYNCX_CONTRACT_FTP_PASSWORD ?? 'syncx-test',
-      debug: () => undefined,
-    };
     const fs = new FTPFileSystem(upath, {
-      clientOption: option as never,
+      clientOption: ftpOption as never,
       remoteTimeOffsetInHours: 0,
     });
+
+    await fs.connect(ftpOption as never, { askForPasswd: async () => undefined });
 
     return {
       name: 'ftp',
       fs,
-      root: `/contract-${Date.now()}`,
-      capabilities: {
-        // FTP has no symbolic links at all; the contract asserts the operation
-        // is refused rather than silently doing nothing.
-        symlinks: false,
-        // MFMT is an extension. vsftpd has it; plenty of servers do not.
-        setTimes: true,
-        // SITE CHMOD is likewise an extension, and Windows servers lack it.
-        chmod: true,
-      },
-      async setup() {
-        await fs.connect(option as never, { askForPasswd: async () => undefined });
-      },
+      // The server is not chrooted: `/` is the real root, which the account
+      // cannot write to. Its home is where a client actually lands.
+      root: `${process.env.SYNCX_CONTRACT_FTP_ROOT ?? '/home/syncx'}/contract-${Date.now()}`,
+      // Detected rather than assumed -- which of these an FTP server has varies
+      // per server, and hard-coding the answer would mean either skipping a
+      // capability this one does have or failing on one it does not.
+      capabilities: await detectFtpCapabilities(fs),
       async teardown() {
         fs.end();
       },
     };
-  });
+  }, REMOTE_TIMEOUT_MS);
 });
+
+async function detectFtpCapabilities(fs: FTPFileSystem): Promise<ContractCapabilities> {
+  const features = await fs.getClient().getFsClient().features();
+  return {
+    // FTP has no notion of symbolic links at all.
+    symlinks: false,
+    // MFMT is an extension. This container reports EPRT, EPSV, MDTM, PASV,
+    // REST, SIZE, TVFS and UTF8 -- and no MFMT, which is exactly the common
+    // case the transport has to degrade gracefully for.
+    setTimes: features.has('MFMT'),
+    // SITE CHMOD is not advertised through FEAT, so it has to be tried.
+    chmod: await supportsSiteChmod(fs),
+  };
+}
+
+async function supportsSiteChmod(fs: FTPFileSystem): Promise<boolean> {
+  try {
+    await fs.getClient().getFsClient().send('SITE HELP');
+    return true;
+  } catch {
+    return false;
+  }
+}

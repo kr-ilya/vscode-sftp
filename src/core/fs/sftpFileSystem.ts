@@ -399,7 +399,17 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const writer: WriteStream = this.sftp.createWriteStream(path, option);
-      writer.once('error', reject).once('finish', resolve); // transffered
+
+      // Settle on whichever terminal event arrives, not on 'finish' alone.
+      // ssh2's SFTP write stream destroys itself inside _final when autoClose
+      // is on -- which is the default -- and a destroyed stream emits 'close'
+      // instead of 'finish'. Waiting only for 'finish' therefore hung forever
+      // on a transfer that had in fact completed: every caller that did not
+      // pass `autoClose: false` explicitly, which includes creating a file on
+      // the server.
+      writer.once('error', reject);
+      writer.once('finish', resolve);
+      writer.once('close', resolve);
 
       input.once('error', err => {
         reject(err);
