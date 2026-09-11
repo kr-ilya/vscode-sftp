@@ -9,6 +9,7 @@ import { installCoreHost } from './modules/coreHost';
 import { initializeWatching } from './modules/watch/watcherService';
 import { initializeHostKeys } from './modules/ssh/hostKeys';
 import { initializeCredentials } from './modules/credentials';
+import { initializeRemotePathApproval } from './modules/remotePathApproval';
 import { reportError } from './helper';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
@@ -42,6 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
   initializeWatching(context);
   initializeHostKeys(context);
   initializeCredentials(context);
+  initializeRemotePathApproval(context);
 
   try {
     initCommands(context);

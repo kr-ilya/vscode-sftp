@@ -23,6 +23,7 @@ import {
 import commandCancelAllTransfer from './commandCancelAllTransfer';
 import commandConfig from './commandConfig';
 import commandForgetPassword from './commandForgetPassword';
+import commandResetRemotePathApprovals from './commandResetRemotePathApprovals';
 import commandListActiveFolder from './commandListActiveFolder';
 import commandOpenSshConnection from './commandOpenSshConnection';
 import commandSetProfile from './commandSetProfile';
@@ -72,6 +73,7 @@ export const plainCommands: CommandEntry[] = [
   ['CancelAllTransfer', commandCancelAllTransfer],
   ['Config', commandConfig],
   ['ForgetPassword', commandForgetPassword],
+  ['ResetRemotePathApprovals', commandResetRemotePathApprovals],
   ['ListActiveFolder', commandListActiveFolder],
   ['OpenSshConnection', commandOpenSshConnection],
   ['SetProfile', commandSetProfile],

@@ -308,6 +308,11 @@
         "command": "syncx.forgetPassword",
         "title": "Forget Saved Password",
         "category": "SyncX"
+      },
+      {
+        "command": "syncx.resetRemotePathApprovals",
+        "title": "Reset Confirmed Upload Destinations",
+        "category": "SyncX"
       }
     ],
     "menus": {

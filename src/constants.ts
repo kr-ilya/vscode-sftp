@@ -27,6 +27,7 @@ export const COMMAND_SET_PROFILE = 'syncx.setProfile';
 export const COMMAND_WATCH_DIAGNOSTICS = 'syncx.watch.diagnostics';
 export const COMMAND_WATCH_DRY_RUN = 'syncx.watch.dryRun';
 export const COMMAND_FORGET_PASSWORD = 'syncx.forgetPassword';
+export const COMMAND_RESET_REMOTE_PATH_APPROVALS = 'syncx.resetRemotePathApprovals';
 export const COMMAND_CANCEL_ALL_TRANSFER = 'syncx.cancelAllTransfer';
 export const COMMAND_OPEN_CONNECTION_IN_TERMINAL = 'syncx.openConnectInTerminal';
 
