@@ -13,10 +13,19 @@ function getFileSystemPath(fsPath: string): string {
 		result = result[0].toUpperCase() + result.substr(1);
 	}
 	if (process.platform === 'win32' || process.platform === 'darwin') {
-		const realpath = fs.realpathSync.native(result);
-		// Only use the real path if only the casing has changed.
-		if (realpath.toLowerCase() === result.toLowerCase()) {
-			result = realpath;
+		// Best effort only: this exists to recover the on-disk casing, and it must
+		// not be fatal when the path is not there. It is routinely not -- a file
+		// being renamed no longer exists under its old name, and a deleted one
+		// does not exist at all -- and an unguarded realpath made every such
+		// mapping throw ENOENT on Windows and macOS.
+		try {
+			const realpath = fs.realpathSync.native(result);
+			// Only use the real path if only the casing has changed.
+			if (realpath.toLowerCase() === result.toLowerCase()) {
+				result = realpath;
+			}
+		} catch {
+			// Keep the path as given.
 		}
 	}
 	return result;
