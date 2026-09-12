@@ -42,24 +42,30 @@ export function filesIgnoredFromConfig(config: FileServiceConfig): string[] {
   return ignore.concat(ignoreFromFile.split(/\r?\n/g));
 }
 
-export function getHostInfo(config) {
-  const ignoreOptions = [
-    'name',
-    'remotePath',
-    'uploadOnSave',
-    'useTempFile',
-    'openSsh',
-    'downloadOnOpen',
-    'ignore',
-    'ignoreFile',
-    'watcher',
-    'concurrency',
-    'syncOption',
-    'sshConfigPath',
-  ];
+/**
+ * Settings that describe the connection, as opposed to what to do over it.
+ *
+ * Hoisted out of getHostInfo, which is called once per file transferred: the
+ * list and its linear scan were rebuilt every time.
+ */
+const NOT_CONNECTION_SETTINGS = new Set([
+  'name',
+  'remotePath',
+  'uploadOnSave',
+  'useTempFile',
+  'openSsh',
+  'downloadOnOpen',
+  'ignore',
+  'ignoreFile',
+  'watcher',
+  'concurrency',
+  'syncOption',
+  'sshConfigPath',
+]);
 
+export function getHostInfo(config) {
   return Object.keys(config).reduce((obj, key) => {
-    if (ignoreOptions.indexOf(key) === -1) {
+    if (!NOT_CONNECTION_SETTINGS.has(key)) {
       obj[key] = config[key];
     }
     return obj;
