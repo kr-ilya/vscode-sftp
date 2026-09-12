@@ -4,14 +4,15 @@
 import * as vscode from 'vscode';
 import app from './app';
 import initCommands from './initCommands';
-import { installLogSink } from './ui/output';
+import { installLogSink, disposeOutput } from './ui/output';
 import { installCoreHost } from './modules/coreHost';
 import { initializeWatching } from './modules/watch/watcherService';
+import { disposeWatchOutput } from './modules/watch/output';
 import { initializeHostKeys } from './modules/ssh/hostKeys';
 import { initializeCredentials } from './modules/credentials';
 import { initializeRemotePathApproval } from './modules/remotePathApproval';
 import { reportError } from './helper';
-import fileActivityMonitor from './modules/fileActivityMonitor';
+import { monitorFileActivity } from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
 import { getAllFileService, createFileService, disposeFileService } from './modules/serviceManager';
 import { getWorkspaceFolders, setContextValue } from './host';
@@ -25,10 +26,7 @@ async function setupWorkspaceFolder(dir) {
 }
 
 function setup(workspaceFolders: readonly vscode.WorkspaceFolder[]) {
-  fileActivityMonitor.init();
-  const pendingInits = workspaceFolders.map(folder => setupWorkspaceFolder(folder.uri.fsPath));
-
-  return Promise.all(pendingInits);
+  return Promise.all(workspaceFolders.map(folder => setupWorkspaceFolder(folder.uri.fsPath)));
 }
 
 // this method is called when your extension is activated
@@ -58,6 +56,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   setContextValue('enabled', true);
   app.sftpBarItem.show();
+  // Everything with a lifetime goes on the subscription list, so the host
+  // releases it on deactivation and a second activation starts clean.
+  context.subscriptions.push(
+    monitorFileActivity(),
+    app.sftpBarItem,
+    app.transferProgress,
+    { dispose: disposeOutput },
+    { dispose: disposeWatchOutput }
+  );
   app.state.subscribe(_ => {
     const currentText = app.sftpBarItem.getText();
     // current is showing profile
@@ -88,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  fileActivityMonitor.destory();
+  // Everything registered on context.subscriptions is disposed by the host;
+  // the services are ours to close.
   getAllFileService().forEach(disposeFileService);
 }

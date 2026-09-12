@@ -59,11 +59,7 @@ export default class RemoteExplorer {
       const uri = item.resource.uri;
       const fileService = getFileService(uri);
       if (!fileService) {
-        if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
-          throw '';
-        } else {
-          throw new Error(`Config Not Found. (${uri.toString(true)})`);
-        }
+        throw new Error(`Config Not Found. (${uri.toString(true)})`);
       }
       const config = fileService.getConfig();
       const localPath = item.resource.fsPath;

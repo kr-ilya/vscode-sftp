@@ -11,22 +11,8 @@ import { simplifyPath } from '../helper';
 export default checkCommand({
   id: COMMAND_UPLOAD_CHANGEDFILES,
 
-  async handleCommand(hint: any) {
+  handleCommand(hint: unknown) {
     return handleCommand(hint);
-
-    // resourceGroup.resourceStates.forEach(resourceState => {
-    //   resourceState.
-    //   console.log(resourceState.decorations);
-    // });
-
-    // try {
-    //   await uploadFile(ctx, { ignore: null });
-    // } catch (error) {
-    //   // ignore error when try to upload a deleted file
-    //   if (error.code !== 'ENOENT') {
-    //     throw error;
-    //   }
-    // }
   },
 });
 

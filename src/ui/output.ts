@@ -27,6 +27,11 @@ export function toggle() {
   }
 }
 
+/** The channel outlives nothing: activate() puts it on the subscription list. */
+export function disposeOutput(): void {
+  outputChannel.dispose();
+}
+
 export function print(...args) {
   const msg = args
     .map(arg => {

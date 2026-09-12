@@ -85,6 +85,14 @@ export default class TransferProgress {
     this._update(true);
   }
 
+  /** Closes any notification still on screen. */
+  dispose(): void {
+    this._active.clear();
+    this._closeNotification?.();
+    this._closeNotification = null;
+    this._report = null;
+  }
+
   /** Whether a notification is currently on screen. For tests and diagnostics. */
   get isShowing(): boolean {
     return this._report !== null;

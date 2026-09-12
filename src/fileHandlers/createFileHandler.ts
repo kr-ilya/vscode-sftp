@@ -3,6 +3,7 @@ import app from '../app';
 import { FileService, ServiceConfig } from '../core';
 import UResource from '../uResource';
 import logger from '../logger';
+import { SkippedTargetError } from '../helper';
 import { getFileService } from '../modules/serviceManager';
 
 interface FileHandlerConfig {
@@ -26,15 +27,32 @@ interface FileHandlerOption<T> {
   transformOption?: FileHandlerContextMethod<T>;
 }
 
-export function handleCtxFromUri(uri: Uri): FileHandlerContext {
+/**
+ * The service a URI belongs to.
+ *
+ * A menu contribution whose `${command:...}` variable did not resolve arrives
+ * here as a URI with the literal text still in it. That is not a file anyone
+ * asked to transfer, so it is skipped rather than reported. Upstream threw an
+ * empty string for this, which reached the error reporter and put a blank
+ * notification on screen -- and named a command id that no longer exists.
+ */
+function isUnresolvedCommandVariable(uri: Uri): boolean {
+  return /^file:\/\/\/\$\{command:/.test(uri.toString(true));
+}
+
+function requireFileService(uri: Uri): FileService {
   const fileService = getFileService(uri);
   if (!fileService) {
-    if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
-      throw '';
-    } else {
-      throw new Error(`Config Not Found. (${uri.toString(true)})`);
+    if (isUnresolvedCommandVariable(uri)) {
+      throw new SkippedTargetError(uri);
     }
+    throw new Error(`Config Not Found. (${uri.toString(true)})`);
   }
+  return fileService;
+}
+
+export function handleCtxFromUri(uri: Uri): FileHandlerContext {
+  const fileService = requireFileService(uri);
   const config = fileService.getConfig();
   const target = UResource.from(uri, {
     localBasePath: fileService.baseDir,
@@ -54,14 +72,7 @@ export function handleCtxFromUri(uri: Uri): FileHandlerContext {
 }
 
 export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
-  const fileService = getFileService(uri);
-  if (!fileService) {
-    if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
-      throw '';
-    } else {
-      throw new Error(`Config Not Found. (${uri.toString(true)})`);
-    }
-  }
+  const fileService = requireFileService(uri);
 
   const configArr = fileService.getAllConfig();
 

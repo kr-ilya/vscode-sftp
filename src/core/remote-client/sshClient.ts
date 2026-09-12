@@ -13,6 +13,13 @@ import {
   type FileDescriptorLimit,
 } from './fileDescriptorLimit';
 
+/** How often to send a keepalive, and how many may go unanswered. */
+const KEEPALIVE_INTERVAL_MS = 30 * 1000;
+const KEEPALIVE_COUNT_MAX = 2;
+
+/** Floor for the handshake timeout when the user has to type an answer. */
+const INTERACTIVE_AUTH_TIMEOUT_MS = 60 * 1000;
+
 export default class SSHClient extends RemoteClient {
   private sftp: any;
   private hoppingClients: SSHClient[];
@@ -115,76 +122,6 @@ export default class SSHClient extends RemoteClient {
     }
   }
 
-  // connect1(readline): Promise<void> {
-  //   const {
-  //     interactiveAuth,
-  //     password,
-  //     privateKeyPath,
-  //     connectTimeout,
-  //     ...option // tslint:disable-line
-  //   } = this.getOption();
-  //   return new Promise<void>((resolve, reject) => {
-  //     const connectWithCredential = (passwd?, privateKey?) =>
-  //       this.client
-  //         .on('ready', () => {
-  //           this.client.sftp((err, sftp) => {
-  //             if (err) {
-  //               reject(err);
-  //             }
-
-  //             this.sftp = sftp;
-  //             resolve();
-  //           });
-  //         })
-  //         .on('error', err => {
-  //           reject(err);
-  //         })
-  //         .connect({
-  //           keepaliveInterval: 1000 * 30,
-  //           keepaliveCountMax: 2,
-  //           readyTimeout: interactiveAuth ? Math.max(60 * 1000, connectTimeout) : connectTimeout,
-  //           ...option,
-  //           privateKey,
-  //           password: passwd,
-  //           tryKeyboard: interactiveAuth,
-  //         });
-
-  //     if (interactiveAuth) {
-  //       this.client.on('keyboard-interactive', function redo(
-  //         name,
-  //         instructions,
-  //         instructionsLang,
-  //         prompts,
-  //         finish,
-  //         stackedAnswers
-  //       ) {
-  //         const answers = stackedAnswers || [];
-  //         if (answers.length < prompts.length) {
-  //           readline(prompts[answers.length].prompt).then(answer => {
-  //             answers.push(answer);
-  //             redo(name, instructions, instructionsLang, prompts, finish, answers);
-  //           });
-  //         } else {
-  //           finish(answers);
-  //         }
-  //       });
-  //     }
-
-  //     if (!privateKeyPath) {
-  //       connectWithCredential(password);
-  //       return;
-  //     }
-
-  //     fs.readFile(privateKeyPath, (err, data) => {
-  //       if (err) {
-  //         reject(err);
-  //         return;
-  //       }
-  //       connectWithCredential(password, data);
-  //     });
-  //   });
-  // }
-
   private _limitSftpFileDescriptor(max: number) {
     if (!this.sftp) {
       return;
@@ -284,16 +221,13 @@ export default class SSHClient extends RemoteClient {
         .on('close', () => this.end())
         .on('end', () => this.end())
         .connect({
-          keepaliveInterval: 1000 * 30, // 30 secs, original
-          // keepaliveInterval: 1000 * 600, // 10 mins
-          // keepaliveInterval: 1000 * 1800, // 30 mins
-          keepaliveCountMax: 2, // x2 original
-          // keepaliveCountMax: 3, // x3
-          // keepaliveCountMax: 6, // x6
+          keepaliveInterval: KEEPALIVE_INTERVAL_MS,
+          keepaliveCountMax: KEEPALIVE_COUNT_MAX,
+          // Answering a keyboard-interactive prompt is a person typing, so the
+          // handshake gets a minute at least. (A host key prompt suspends this
+          // timer outright -- see hostVerification.)
           readyTimeout: interactiveAuth
-            ? Math.max(60 * 1000, connectTimeout || 0) // 60 secs, original
-            // ? Math.max(1800 * 1000, connectTimeout || 0) // 30 mins
-            // ? Math.max(10800 * 1000, connectTimeout || 0) // 180 mins
+            ? Math.max(INTERACTIVE_AUTH_TIMEOUT_MS, connectTimeout || 0)
             : connectTimeout,
           ...option,
           tryKeyboard: !!interactiveAuth,

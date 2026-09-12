@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
+import { realpathSync } from 'node:fs';
 import logger from '../logger';
-import { realpathSync } from 'fs';
 import app from '../app';
 import { fileContentCache } from '../core/fileContentCache';
 import StatusBarItem from '../ui/statusBarItem';
@@ -15,9 +15,15 @@ import {
 import { reportError, isValidFile, isConfigFile, isInWorkspace } from '../helper';
 import { downloadFile, uploadFile } from '../fileHandlers';
 
-let workspaceWatcher: vscode.Disposable;
+/**
+ * Reacts to documents being saved and opened.
+ *
+ * Both subscriptions are returned as one disposable rather than kept in module
+ * state: the open-document listener used to be registered and never released,
+ * so it outlived deactivation and a second activation added another.
+ */
 
-async function handleConfigSave(uri: vscode.Uri) {
+async function handleConfigSave(uri: vscode.Uri): Promise<void> {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
   if (!workspaceFolder) {
     return;
@@ -25,117 +31,105 @@ async function handleConfigSave(uri: vscode.Uri) {
 
   const workspacePath = workspaceFolder.uri.fsPath;
 
-  // dispose old service
   findAllFileService(service => service.workspace === workspacePath).forEach(disposeFileService);
 
-  // create new service
   try {
     const configs = await readConfigsFromFile(uri.fsPath);
     configs.forEach(config => createFileService(config, workspacePath));
   } catch (error) {
     reportError(error);
   } finally {
-    app.remoteExplorer.refresh();
+    await app.remoteExplorer.refresh();
   }
 }
 
-async function handleFileSave(uri: vscode.Uri) {
+async function handleFileSave(uri: vscode.Uri): Promise<void> {
   const fileService = getFileService(uri);
   if (!fileService) {
     return;
   }
 
-  const config = fileService.getConfig();
-  if (config.uploadOnSave) {
-    const fspath = await realpathSync.native(uri.fsPath);
-    uri = vscode.Uri.file(fspath);
-    logger.info(`[file-save] ${fspath}`);
-    try {
-      await uploadFile(uri);
-    } catch (error) {
-      logger.error(error, `download ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
-    }
+  if (!fileService.getConfig().uploadOnSave) {
+    return;
+  }
+
+  // Through any symbolic links, so the path matches the one the watcher and
+  // the change tracker know the file by.
+  let resolved = uri;
+  try {
+    resolved = vscode.Uri.file(realpathSync.native(uri.fsPath));
+  } catch (error) {
+    // The file can be gone again by the time this runs; the upload below will
+    // report that properly. Upstream called this outside any try and awaited a
+    // synchronous function, so the rejection had nowhere to go.
+    logger.debug(`[file-save] could not resolve ${uri.fsPath}`, error);
+  }
+
+  logger.info(`[file-save] ${resolved.fsPath}`);
+  try {
+    await uploadFile(resolved);
+  } catch (error) {
+    logger.error(error, `upload ${resolved.fsPath}`);
+    app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
   }
 }
 
-async function downloadOnOpen(uri: vscode.Uri) {
+async function downloadOnOpen(uri: vscode.Uri): Promise<void> {
   const fileService = getFileService(uri);
   if (!fileService) {
     return;
   }
 
-  const config = fileService.getConfig();
-  if (config.downloadOnOpen) {
-    if (config.downloadOnOpen === 'confirm') {
-      const isConfirm = await showConfirmMessage('Do you want SFTP to download this file?');
-      if (!isConfirm) return;
-    }
+  const { downloadOnOpen: mode } = fileService.getConfig();
+  if (!mode) {
+    return;
+  }
 
-    const fspath = uri.fsPath;
-    logger.info(`[file-open] ${fspath}`);
-    try {
-      await downloadFile(uri);
-    } catch (error) {
-      logger.error(error, `download ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
-    }
+  if (mode === 'confirm' && !(await showConfirmMessage('Do you want SyncX to download this file?'))) {
+    return;
+  }
+
+  logger.info(`[file-open] ${uri.fsPath}`);
+  try {
+    await downloadFile(uri);
+  } catch (error) {
+    logger.error(error, `download ${uri.fsPath}`);
+    app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
   }
 }
 
-function watchWorkspace({
-  onDidSaveFile,
-  onDidSaveSftpConfig,
-}: {
-  onDidSaveFile: (uri: vscode.Uri) => void;
-  onDidSaveSftpConfig: (uri: vscode.Uri) => void;
-}) {
-  if (workspaceWatcher) {
-    workspaceWatcher.dispose();
+/** A document the extension has anything to say about. */
+function isWatchedDocument(document: vscode.TextDocument): boolean {
+  return isValidFile(document.uri) && isInWorkspace(document.uri.fsPath);
+}
+
+function onSave(document: vscode.TextDocument): void {
+  if (!isWatchedDocument(document)) {
+    return;
   }
 
-  workspaceWatcher = onDidSaveTextDocument((doc: vscode.TextDocument) => {
-    const uri = doc.uri;
-    if (!isValidFile(uri) || !isInWorkspace(uri.fsPath)) {
-      return;
-    }
+  // The config file and the ssh config are read through this cache.
+  fileContentCache.delete(document.uri.fsPath);
 
-    // remove staled cache
-    if (fileContentCache.has(uri.fsPath)) {
-      fileContentCache.delete(uri.fsPath);
-    }
+  const handled = isConfigFile(document.uri)
+    ? handleConfigSave(document.uri)
+    : handleFileSave(document.uri);
 
-    if (isConfigFile(uri)) {
-      onDidSaveSftpConfig(uri);
-      return;
-    }
-
-    onDidSaveFile(uri);
-  });
+  // Deliberately not awaited -- the editor does not wait for us -- but a
+  // rejection has to reach the log rather than the host's unhandled handler.
+  void handled.catch(error => reportError(error, 'on save'));
 }
 
-function init() {
-  onDidOpenTextDocument((doc: vscode.TextDocument) => {
-    if (!isValidFile(doc.uri) || !isInWorkspace(doc.uri.fsPath)) {
-      return;
-    }
-
-    downloadOnOpen(doc.uri);
-  });
-
-  watchWorkspace({
-    onDidSaveFile: handleFileSave,
-    onDidSaveSftpConfig: handleConfigSave,
-  });
-}
-
-function destory() {
-  if (workspaceWatcher) {
-    workspaceWatcher.dispose();
+function onOpen(document: vscode.TextDocument): void {
+  if (!isWatchedDocument(document)) {
+    return;
   }
+
+  void downloadOnOpen(document.uri).catch(error => reportError(error, 'on open'));
 }
 
-export default {
-  init,
-  destory,
-};
+/** Subscribes to the editor. Dispose to unsubscribe. */
+export function monitorFileActivity(): vscode.Disposable {
+  const subscriptions = [onDidOpenTextDocument(onOpen), onDidSaveTextDocument(onSave)];
+  return vscode.Disposable.from(...subscriptions);
+}

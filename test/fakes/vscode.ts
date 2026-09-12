@@ -67,6 +67,12 @@ export class Uri {
     return new Uri({ scheme: 'file', path: fsPath.split('\\').join('/'), fsPath });
   }
 
+  /** Extends a URI's *path* component, as the real one does. */
+  static joinPath(base: Uri, ...segments: string[]): Uri {
+    const path = [base.path.replace(/\/+$/, ''), ...segments].join('/');
+    return base.with({ path });
+  }
+
   static parse(value: string): Uri {
     const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(
       value
@@ -242,8 +248,15 @@ export interface FakeCancellationToken {
 /** Every progress notification opened so far. Tests clear it themselves. */
 export const openedProgress: FakeProgress[] = [];
 
+/**
+ * Answers `window.showInputBox` will give, oldest first. A test pushes what the
+ * user would type; an exhausted queue means the prompt was cancelled.
+ */
+export const inputBoxAnswers: Array<string | undefined> = [];
+
 export const window = strict('window', {
   createStatusBarItem: () => new FakeStatusBarItem(),
+  showInputBox: async () => inputBoxAnswers.shift(),
   createOutputChannel: (name: string) => new FakeOutputChannel(name),
   registerFileDecorationProvider: () => new Disposable(),
   async withProgress<R>(

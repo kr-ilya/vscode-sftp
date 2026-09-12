@@ -56,6 +56,23 @@ export default class StatusBarItem {
     this.statusBarItem.show();
   }
 
+  /**
+   * Both timers are cleared here as well as the item itself: a running spinner
+   * is a repeating interval, and an interval outliving the extension keeps the
+   * host awake redrawing something nobody can see.
+   */
+  dispose(): void {
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = null;
+    }
+    if (this.resetTimer) {
+      clearTimeout(this.resetTimer);
+      this.resetTimer = null;
+    }
+    this.statusBarItem.dispose();
+  }
+
   isSpinning() {
     return this.spinnerTimer !== null;
   }

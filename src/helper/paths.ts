@@ -50,9 +50,9 @@ export function toLocalPath(remotePath: string, remoteContext: string, localCont
 export { isSubpathOf, replaceHomePath, resolvePath } from '../core/util/paths';
 
 /** Editor-aware: needs to know what the open workspace folders are. */
-export function isInWorkspace(filepath: string) {
+export function isInWorkspace(filepath: string): boolean {
   const workspaceFolders = getWorkspaceFolders();
-  return (
+  return Boolean(
     workspaceFolders &&
     workspaceFolders.some(
       // vscode can't keep filepath's stable, covert them to toLowerCase before check

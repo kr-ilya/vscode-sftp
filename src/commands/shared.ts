@@ -1,8 +1,9 @@
 import * as path from 'path';
 import { Uri, window } from 'vscode';
-import { FileType } from '../core';
+import { FileType, upath } from '../core';
 import { getAllFileService } from '../modules/serviceManager';
 import { ExplorerItem } from '../modules/remoteExplorer';
+import UResource from '../uResource';
 import { getActiveTextEditor } from '../host';
 import { listFiles, toLocalPath, simplifyPath } from '../helper';
 
@@ -55,10 +56,6 @@ export function selectContext(): Promise<Uri | undefined> {
         detail: service.baseDir,
       }))
       .sort((l, r) => l.label.localeCompare(r.label));
-
-    // if (projectsList.length === 1) {
-    // return resolve(projectsList[0].value);
-    // }
 
     window
       .showQuickPick(projectsList, {
@@ -163,3 +160,39 @@ export const selectFileFromAll = createFileSelector();
 
 // selected file from remote files expect ignored
 export const selectFile = createFileSelector(configIngoreFilterCreator);
+
+/**
+ * Asks for a name and returns the URI of an entry with that name inside
+ * `parent`.
+ *
+ * The name cannot simply be appended to `parent.toString()`. A remote URI keeps
+ * its path in the query string, so appending landed the name *after* the query
+ * -- the created entry got the folder's own path and the typed name was lost,
+ * while `remoteId` picked up a `/name` suffix. Each scheme has to be extended
+ * where it actually keeps its path.
+ */
+export async function promptForNewEntryUri(
+  parent: Uri | Uri[],
+  prompt: string
+): Promise<Uri | undefined> {
+  // Creating one entry inside several folders at once has no meaning; the
+  // clicked item comes first.
+  const target = Array.isArray(parent) ? parent[0] : parent;
+  if (!target) {
+    return undefined;
+  }
+
+  const name = (await window.showInputBox({ prompt }))?.trim();
+  if (!name) {
+    return undefined;
+  }
+
+  if (UResource.isRemote(target)) {
+    const resource = UResource.makeResource(target);
+    return UResource.updateResource(resource, {
+      remotePath: upath.join(resource.fsPath, name),
+    }).uri;
+  }
+
+  return Uri.joinPath(target, name);
+}

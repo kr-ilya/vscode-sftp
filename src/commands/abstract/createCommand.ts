@@ -37,8 +37,11 @@ export function createCommand(commandOption: CommandOption & { name: string }) {
       this.name = commandOption.name;
     }
 
-    doCommandRun(...args) {
-      commandOption.handleCommand.apply(this, args);
+    doCommandRun(...args: unknown[]) {
+      // Returned, not just called: Command.run() awaits this, and without it
+      // every non-file command reported itself done before it had started, and
+      // a rejection escaped the try/catch that exists to report it.
+      return commandOption.handleCommand.apply(this, args);
     }
   };
 }
