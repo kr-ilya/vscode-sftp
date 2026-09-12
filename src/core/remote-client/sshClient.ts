@@ -6,15 +6,18 @@ import { FileSystem, RemoteFileSystem, SFTPFileSystem } from '../fs';
 import logger from '../logger';
 import CustomError from '../customError';
 import { hostVerifierFor } from './hostVerification';
-
-let MAX_OPEN_FD_NUM = 222;
+import {
+  createFileDescriptorLimit,
+  DEFAULT_OPEN_FD_LIMIT,
+  MIN_OPEN_FD_LIMIT,
+  type FileDescriptorLimit,
+} from './fileDescriptorLimit';
 
 export default class SSHClient extends RemoteClient {
   private sftp: any;
   private hoppingClients: SSHClient[];
   private _ended = false;
-  private _opendFdNum: number = 0;
-  private _queuedFdRequireCall: Array<(...args: any[]) => any> = [];
+  private _fdLimit: FileDescriptorLimit | null = null;
 
   get protocol(): string {
     return 'sftp';
@@ -100,10 +103,15 @@ export default class SSHClient extends RemoteClient {
     this.sftp = await this._getSftp(this._client);
 
     if (lastOption.limitOpenFilesOnRemote) {
-      if (typeof lastOption.limitOpenFilesOnRemote !== 'boolean') {
-        MAX_OPEN_FD_NUM = Math.max(127, lastOption.limitOpenFilesOnRemote);
-      }
-      this._limitSftpFileDescriptor();
+      // Per connection. This was a module-wide `let` set from whichever config
+      // connected last, so two servers with different limits -- or one asking
+      // for `true` after one that asked for a number -- shared whatever it
+      // happened to hold.
+      const max =
+        typeof lastOption.limitOpenFilesOnRemote === 'number'
+          ? Math.max(MIN_OPEN_FD_LIMIT, lastOption.limitOpenFilesOnRemote)
+          : DEFAULT_OPEN_FD_LIMIT;
+      this._limitSftpFileDescriptor(max);
     }
   }
 
@@ -177,66 +185,28 @@ export default class SSHClient extends RemoteClient {
   //   });
   // }
 
-  private _limitSftpFileDescriptor() {
+  private _limitSftpFileDescriptor(max: number) {
     if (!this.sftp) {
       return;
     }
 
+    const limit = createFileDescriptorLimit(max);
+    this._fdLimit = limit;
+
+    // On the SFTP object itself. Upstream patched `sftp._stream`, which ssh2
+    // has not had for years: turning `limitOpenFilesOnRemote` on threw
+    // "Cannot read properties of undefined (reading 'open')" during connect, so
+    // the option did not merely fail to limit anything -- it made the
+    // connection fail. Found by running it against a real server.
     const sftp = this.sftp;
-    sftp._stream.open = this._hookCallForRequestFileDescriptor(
-      sftp._stream.open
-    );
-    sftp._stream.opendir = this._hookCallForRequestFileDescriptor(
-      sftp._stream.opendir
-    );
-    sftp._stream.close = this._hookCallForReleaseFileDescriptor(
-      sftp._stream.close
-    );
+    sftp.open = limit.guardAcquire(sftp.open.bind(sftp));
+    sftp.opendir = limit.guardAcquire(sftp.opendir.bind(sftp));
+    sftp.close = limit.guardRelease(sftp.close.bind(sftp));
   }
 
-  private _hookCallForReleaseFileDescriptor(fn) {
-    const self = this;
-    return function releaseFileDescriptor(this: any) {
-      const last = arguments.length - 1;
-      const args = Array.prototype.slice.call(arguments, 0, last);
-      const cb = arguments[last];
-      function wrapped(this: any) {
-        // 队列到下一周期执行, 确保 cb 先执行.
-        Promise.resolve().then(() => {
-          if (self._queuedFdRequireCall.length > 0) {
-            const queuedCall = self._queuedFdRequireCall.pop()!;
-            queuedCall();
-          }
-        });
-        self._opendFdNum -= 1;
-        cb.apply(this, arguments);
-      }
-      args.push(wrapped);
-      return fn.apply(this, args);
-    };
-  }
-
-  private _hookCallForRequestFileDescriptor(fn) {
-    const self = this;
-    return function requestFileDescriptor(this: any) {
-      const last = arguments.length - 1;
-      const args = Array.prototype.slice.call(arguments, 0, last);
-      const cb = arguments[last];
-      function wrapped(this: any) {
-        self._opendFdNum += 1;
-        cb.apply(this, arguments);
-      }
-      args.push(wrapped);
-
-      if (self._opendFdNum >= MAX_OPEN_FD_NUM) {
-        self._queuedFdRequireCall.push(() => {
-          fn.apply(this, args);
-        });
-        return;
-      }
-
-      return fn.apply(this, args);
-    };
+  /** Descriptors reserved and calls waiting, for diagnostics and tests. */
+  get fileDescriptorUsage(): { reserved: number; waiting: number } | null {
+    return this._fdLimit && { reserved: this._fdLimit.reserved, waiting: this._fdLimit.waiting };
   }
 
   private async _connectSSHClient(

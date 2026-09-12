@@ -24,9 +24,6 @@ export interface EntrySource {
   (uri: vscode.Uri): { entry: FileEntry; localPath: string } | undefined;
 }
 
-const MODIFIED = new vscode.ThemeColor('gitDecoration.modifiedResourceForeground');
-const UNTRACKED = new vscode.ThemeColor('gitDecoration.untrackedResourceForeground');
-
 export default class RemoteDecorationProvider implements vscode.FileDecorationProvider {
   private readonly _changed = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
   readonly onDidChangeFileDecorations = this._changed.event;
@@ -63,18 +60,21 @@ export default class RemoteDecorationProvider implements vscode.FileDecorationPr
   }
 }
 
+// Colours are built here rather than held in module constants: a constant runs
+// at import time, and loading the bundle must not depend on the editor API
+// being there -- which is exactly what the packaged smoke test checks.
 function decorationFor(verdict: StatusVerdict): vscode.FileDecoration | undefined {
   switch (verdict.status) {
     case 'different':
       return {
         badge: 'M',
-        color: MODIFIED,
+        color: new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'),
         tooltip: `Differs from the local file — ${verdict.reason}`,
       };
     case 'remote-only':
       return {
         badge: '↓',
-        color: UNTRACKED,
+        color: new vscode.ThemeColor('gitDecoration.untrackedResourceForeground'),
         tooltip: 'On the server only — there is no local copy',
       };
     case 'unverified':

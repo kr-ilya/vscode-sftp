@@ -1,4 +1,5 @@
-import { describe } from 'vitest';
+import { describe, test, expect } from 'vitest';
+import { Readable } from 'stream';
 import upath from '../../src/core/upath';
 import SFTPFileSystem from '../../src/core/fs/sftpFileSystem';
 import FTPFileSystem from '../../src/core/fs/ftpFileSystem';
@@ -20,6 +21,8 @@ import { runFileSystemContract, type ContractCapabilities } from './fileSystemCo
 
 /** A round trip to a container is orders of magnitude slower than memory. */
 const REMOTE_TIMEOUT_MS = 30_000;
+
+const text = (content: string) => Readable.from([Buffer.from(content, 'utf8')]);
 
 const sftpEnabled = Boolean(process.env.SYNCX_CONTRACT_SFTP);
 const ftpEnabled = Boolean(process.env.SYNCX_CONTRACT_FTP);
@@ -124,3 +127,55 @@ async function supportsSiteChmod(fs: FTPFileSystem): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * `limitOpenFilesOnRemote` against a real sshd.
+ *
+ * The limiter wraps ssh2's own handle calls, so nothing but a real server
+ * exercises the path it sits in. With the cap set to one, every listing and
+ * every read has to queue behind the last -- if the accounting is wrong in
+ * either direction this either deadlocks or stops limiting.
+ */
+describe.skipIf(!sftpEnabled)('limiting open file descriptors', () => {
+  const LIMIT = 1;
+  const root = `${process.env.SYNCX_CONTRACT_SFTP_ROOT ?? '/config'}/fdlimit-${Date.now()}`;
+
+  test(
+    'transfers still complete with the cap set to one',
+    async () => {
+      acceptAnyHostKey();
+      const fs = new SFTPFileSystem(upath, {
+        clientOption: { ...sftpOption, limitOpenFilesOnRemote: LIMIT } as never,
+        remoteTimeOffsetInHours: 0,
+      });
+      await fs.connect(
+        { ...sftpOption, limitOpenFilesOnRemote: LIMIT } as never,
+        { askForPasswd: async () => undefined }
+      );
+
+      try {
+        await fs.ensureDir(root);
+
+        // Concurrent, so they contend for the single descriptor.
+        const names = ['a', 'b', 'c', 'd', 'e', 'f'].map(n => `${root}/${n}.txt`);
+        await Promise.all(names.map(name => fs.put(text(name), name)));
+
+        const listed = (await fs.list(root)).map(item => item.name).sort();
+        expect(listed).toEqual(['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt', 'f.txt']);
+
+        // A failed open used to keep its reservation forever, so this is where
+        // a cap of one would wedge permanently.
+        await expect(fs.lstat(`${root}/not-there.txt`)).rejects.toBeTruthy();
+        await expect(fs.lstat(`${root}/also-not-there.txt`)).rejects.toBeTruthy();
+
+        const stillWorks = await fs.list(root);
+        expect(stillWorks).toHaveLength(6);
+
+        await fs.rmdir(root, true);
+      } finally {
+        fs.end();
+      }
+    },
+    REMOTE_TIMEOUT_MS
+  );
+});

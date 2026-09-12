@@ -49,20 +49,5 @@ export default tseslint.config(
         },
       ],
     },
-  },
-  {
-    // sshClient hooks ssh2's internal file-descriptor calls by wrapping
-    // arbitrary callbacks, which needs `arguments` and a `this` alias to stay
-    // transparent to the wrapped function. Rewriting that to rest parameters is
-    // mechanical but touches fd lifetime accounting, and a regression there
-    // means leaked descriptors or a hung transfer -- not a trade worth making
-    // for a style rule. These downgrade to warnings until the transport is
-    // rewritten against the RemoteFileSystem contract (roadmap iteration 8),
-    // at which point this block should be deleted rather than extended.
-    files: ['src/core/remote-client/sshClient.ts'],
-    rules: {
-      'prefer-rest-params': 'warn',
-      '@typescript-eslint/no-this-alias': 'warn',
-    },
   }
 );
