@@ -20,8 +20,7 @@ export function transferSymlink(
   src: string,
   des: string,
   srcFs: FileSystem,
-  desFs: FileSystem,
-  option: FileOption
+  desFs: FileSystem
 ): Promise<void> {
   return srcFs.readlink(src).then(targetPath => {
     return desFs.symlink(targetPath, des).catch(err => {
@@ -34,11 +33,11 @@ export function transferSymlink(
   });
 }
 
-export function removeFile(path: string, fs: FileSystem, option): Promise<void> {
+export function removeFile(path: string, fs: FileSystem): Promise<void> {
   return fs.unlink(path);
 }
 
-export function removeDir(path: string, fs: FileSystem, option): Promise<void> {
+export function removeDir(path: string, fs: FileSystem): Promise<void> {
   return fs.rmdir(path, true);
 }
 
@@ -46,11 +45,11 @@ export function rename(srcPath: string, destPath: string, fs: FileSystem): Promi
   return fs.rename(srcPath, destPath);
 }
 
-export function createDir(path: string, fs: FileSystem, option): Promise<void> {
+export function createDir(path: string, fs: FileSystem): Promise<void> {
   return fs.mkdir(path);
 }
 
-export async function createFile(path: string, fs: FileSystem, option): Promise<void> {
+export async function createFile(path: string, fs: FileSystem): Promise<void> {
   let exists = false;
   try {
     await fs.lstat(path);

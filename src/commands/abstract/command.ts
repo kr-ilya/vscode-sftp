@@ -10,13 +10,14 @@ export interface CommandOption {
 }
 
 export default abstract class Command {
-  id: string;
-  name!: string;
-  private _commandDoneListeners: Array<(...args: any[]) => void>;
+  private _commandDoneListeners: Array<(...args: any[]) => void> = [];
 
-  constructor() {
-    this._commandDoneListeners = [];
-  }
+  /**
+   * Identity comes from the factory that creates the subclass. It used to be
+   * assigned afterwards by each subclass constructor, which is why the fields
+   * could not be declared as always present.
+   */
+  constructor(readonly id: string, readonly name: string) {}
 
   onCommandDone(listener) {
     this._commandDoneListeners.push(listener);

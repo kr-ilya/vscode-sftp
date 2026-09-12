@@ -1,6 +1,6 @@
 class AppState {
   private _profile: string | null = null;
-  private _observer: (x: any) => void;
+  private _observer: (snapshot: unknown) => void = () => undefined;
 
   get profile(): string | null {
     return this._profile;

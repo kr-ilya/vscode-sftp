@@ -22,7 +22,7 @@ const INTERACTIVE_AUTH_TIMEOUT_MS = 60 * 1000;
 
 export default class SSHClient extends RemoteClient {
   private sftp: any;
-  private hoppingClients: SSHClient[];
+  private hoppingClients: SSHClient[] = [];
   private _ended = false;
   private _fdLimit: FileDescriptorLimit | null = null;
 

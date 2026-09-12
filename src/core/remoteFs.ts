@@ -48,9 +48,9 @@ function hashOption(opiton) {
 class KeepAliveRemoteFs {
   private isValid: boolean = false;
 
-  private pendingPromise: Promise<RemoteFileSystem> | null;
+  private pendingPromise: Promise<RemoteFileSystem> | null = null;
 
-  private fs: RemoteFileSystem;
+  private fs!: RemoteFileSystem;
 
   async getFs(
     option: ConnectOption & {
@@ -128,7 +128,7 @@ class KeepAliveRemoteFs {
     return this.pendingPromise;
   }
 
-  invalid(reason: string) {
+  invalid(_reason: string) {
     this.pendingPromise = null;
     this.fs.end();
     this.isValid = false;

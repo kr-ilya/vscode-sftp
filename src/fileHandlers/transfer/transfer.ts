@@ -192,12 +192,12 @@ async function removeFile(file: string, fs: FileSystem, fileType: FileType, opti
 
   switch (fileType) {
     case FileType.Directory:
-      await fileOperations.removeDir(file, fs, option);
+      await fileOperations.removeDir(file, fs);
       logger.info('folder removed.');
       break;
     case FileType.File:
     case FileType.SymbolicLink:
-      await fileOperations.removeFile(file, fs, option);
+      await fileOperations.removeFile(file, fs);
       logger.info('file removed.');
       break;
     default:
@@ -217,7 +217,7 @@ async function _sync(
   }
 
   const altDirection = getAltDirection(transferDirection);
-  const syncFiles = (srcFileEntries: FileEntry[], desFileEntries: FileEntry[]) => {
+  const syncFiles = async (srcFileEntries: FileEntry[], desFileEntries: FileEntry[]) => {
     const srcFileTable = toHash(srcFileEntries, 'id', fileEntry => ({
       ...fileEntry,
       id: fileEntry.name,
@@ -370,9 +370,13 @@ async function _sync(
       });
     }
 
-    // side-effect
-    fileMissed.forEach(file => removeFile(file, targetFs, FileType.File, transferOption));
-    dirMissed.forEach(file => removeFile(file, targetFs, FileType.Directory, transferOption));
+    // Awaited with the rest of the work below. These were fired and dropped, so
+    // `sync --delete` reported success before a single deletion had happened
+    // and a deletion that failed escaped as an unhandled rejection.
+    const removePromise = [
+      ...fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption)),
+      ...dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption)),
+    ];
 
     const transFilePromise = file2trans.map(([src, target, direction, option]) =>
       transferFile(
@@ -411,6 +415,9 @@ async function _sync(
       )
     );
 
+    // Deletions first, so a file replaced by a directory of the same name -- or
+    // the reverse -- does not race its own replacement.
+    await Promise.all(removePromise);
     return Promise.all([...transFilePromise, ...transDirPromise, ...syncPromise]).then(flatten);
   };
 
@@ -418,8 +425,8 @@ async function _sync(
   await targetFs.ensureDir(targetFsPath);
 
   const files = await Promise.all([
-    srcFs.list(srcFsPath).catch(err => []),
-    targetFs.list(targetFsPath).catch(err => []),
+    srcFs.list(srcFsPath).catch(() => []),
+    targetFs.list(targetFsPath).catch(() => []),
   ]);
   await syncFiles(...files);
 }

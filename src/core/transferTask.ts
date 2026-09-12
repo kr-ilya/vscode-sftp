@@ -49,7 +49,7 @@ export default class TransferTask implements Task {
   private readonly _targetFs: FileSystem;
   private readonly _transferDirection: TransferDirection;
   private readonly _TransferOption: TransferOption;
-  private _handle: Readable;
+  private _handle: Readable | undefined;
   private _cancelled = false;
   private _transferred = 0;
   private _onProgress?: TransferProgressListener;
@@ -120,13 +120,7 @@ export default class TransferTask implements Task {
         await this._transferFile();
         break;
       case FileType.SymbolicLink:
-        await fileOperations.transferSymlink(
-          src,
-          target,
-          srcFs,
-          targetFs,
-          this._TransferOption
-        );
+        await fileOperations.transferSymlink(src, target, srcFs, targetFs);
         break;
       default:
         logger.warn(`Unsupported file type (type = ${this.fileType}). File ${src}`);

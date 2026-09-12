@@ -32,9 +32,7 @@ export const checkFileCommand = checkType<FileCommandOption>();
 export function createCommand(commandOption: CommandOption & { name: string }) {
   return class NormalCommand extends Command {
     constructor() {
-      super();
-      this.id = commandOption.id;
-      this.name = commandOption.name;
+      super(commandOption.id, commandOption.name);
     }
 
     doCommandRun(...args: unknown[]) {
@@ -49,9 +47,7 @@ export function createCommand(commandOption: CommandOption & { name: string }) {
 export function createFileCommand(commandOption: FileCommandOption & { name: string }) {
   return class FileCommand extends Command {
     constructor() {
-      super();
-      this.id = commandOption.id;
-      this.name = commandOption.name;
+      super(commandOption.id, commandOption.name);
     }
 
     protected async doCommandRun(...args) {
@@ -83,9 +79,7 @@ export function createFileCommand(commandOption: FileCommandOption & { name: str
 export function createFileMultiCommand(commandOption: FileCommandOption & { name: string }) {
   return class FileCommand extends Command {
     constructor() {
-      super();
-      this.id = commandOption.id;
-      this.name = commandOption.name;
+      super(commandOption.id, commandOption.name);
     }
 
     protected async doCommandRun(...args) {

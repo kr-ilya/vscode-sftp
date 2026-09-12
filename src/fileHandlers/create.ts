@@ -5,11 +5,11 @@ import { FileHandleOption } from './option';
 
 export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?: boolean }>({
   name: 'createRemoteFile',
-  async handle(option) {
+  async handle() {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
 
-    const promise = fileOperations.createFile(remoteFsPath, remoteFs, {});
+    const promise = fileOperations.createFile(remoteFsPath, remoteFs);
 
     /*
     const stat = await remoteFs.lstat(remoteFsPath);
@@ -18,12 +18,12 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
         if (option.skipDir) {
           return;
         }
-        promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
-        // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
+        promise = fileOperations.createDir(remoteFsPath, remoteFs);
+        // promise = fileOperations.removeDir(remoteFsPath, remoteFs);
         break;
       case FileType.File:
       case FileType.SymbolicLink:
-        // promise = fileOperations.removeFile(remoteFsPath, remoteFs, {});
+        // promise = fileOperations.removeFile(remoteFsPath, remoteFs);
         break;
       default:
         throw new Error(`Unsupported file type (type = ${stat.type})`);
@@ -43,11 +43,11 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
 
 export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir?: boolean }>({
   name: 'createRemoteFolder',
-  async handle(option) {
+  async handle() {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
 
-    const promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
+    const promise = fileOperations.createDir(remoteFsPath, remoteFs);
 
     /*
     const stat = await remoteFs.lstat(remoteFsPath);
@@ -56,12 +56,12 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
         if (option.skipDir) {
           return;
         }
-        promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
-        // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
+        promise = fileOperations.createDir(remoteFsPath, remoteFs);
+        // promise = fileOperations.removeDir(remoteFsPath, remoteFs);
         break;
       case FileType.File:
       case FileType.SymbolicLink:
-        // promise = fileOperations.removeFile(remoteFsPath, remoteFs, {});
+        // promise = fileOperations.removeFile(remoteFsPath, remoteFs);
         break;
       default:
         throw new Error(`Unsupported file type (type = ${stat.type})`);

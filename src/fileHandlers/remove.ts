@@ -17,11 +17,11 @@ export const removeRemote = createFileHandler<FileHandleOption & { skipDir?: boo
           return;
         }
 
-        promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
+        promise = fileOperations.removeDir(remoteFsPath, remoteFs);
         break;
       case FileType.File:
       case FileType.SymbolicLink:
-        promise = fileOperations.removeFile(remoteFsPath, remoteFs, {});
+        promise = fileOperations.removeFile(remoteFsPath, remoteFs);
         break;
       default:
         logger.warn(`Unsupported file type (type = ${stat.type}). File ${remoteFsPath}`);

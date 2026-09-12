@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noImplicitReturns": true,
     "strictNullChecks": true,
     "strictBindCallApply": true,
@@ -20,7 +21,7 @@
     "alwaysStrict": true,
     "useUnknownInCatchVariables": false,
     "noImplicitAny": false,
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules", ".vscode-test", "dist", "out"]

@@ -25,7 +25,7 @@ function createUriString(authority: string, filepath: string, query: { [x: strin
 class _Resource {
   private readonly _uri: Uri;
   private readonly _fsPath: string;
-  private readonly _remoteId: number;
+  private readonly _remoteId: number | undefined;
 
   constructor(uri: Uri) {
     this._uri = uri;
@@ -43,7 +43,8 @@ class _Resource {
     }
   }
 
-  get remoteId(): number {
+  /** Undefined for a local resource, which belongs to no particular service. */
+  get remoteId(): number | undefined {
     return this._remoteId;
   }
 

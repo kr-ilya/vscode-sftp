@@ -50,8 +50,8 @@ function dirFirstSort(fileA: ExplorerItem, fileB: ExplorerItem) {
 }
 
 export default class RemoteTreeData implements vscode.TreeDataProvider<ExplorerItem> {
-  private _roots: ExplorerRoot[] | null;
-  private _rootsMap: Map<Id, ExplorerRoot> | null;
+  private _roots: ExplorerRoot[] | null = null;
+  private _rootsMap: Map<Id, ExplorerRoot> | null = null;
   private _map = new Map<vscode.Uri['query'], ExplorerItem>();
 
   private _onDidChangeFolder: vscode.EventEmitter<ExplorerItem> = new vscode.EventEmitter<
@@ -254,8 +254,10 @@ export default class RemoteTreeData implements vscode.TreeDataProvider<ExplorerI
       return null;
     }
 
+    // A local URI carries no service id, so there is no root to find -- which
+    // is a legitimate answer rather than a lookup with `undefined` as the key.
     const rootId = UResource.makeResource(uri).remoteId;
-    return this._rootsMap.get(rootId);
+    return rootId === undefined ? undefined : this._rootsMap.get(rootId);
   }
 
   private _getRoots(): ExplorerRoot[] {

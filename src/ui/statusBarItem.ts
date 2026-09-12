@@ -22,7 +22,7 @@ export default class StatusBarItem {
   private spinnerTimer: any = null;
   private resetTimer: any = null;
   private curFrameOfSpinner: number = 0;
-  private text: string;
+  private text = '';
   private status: Status = Status.ok;
   private spinner: {
     interval: number;
