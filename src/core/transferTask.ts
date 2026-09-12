@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import * as fileOperations from './fileBaseOperations';
 import { FileSystem, FileType } from './fs';
 import { Task } from './scheduler';
@@ -27,7 +27,19 @@ export interface TransferOption {
   perserveTargetMode: boolean;
   useTempFile?: boolean;
   openSsh?: boolean;
+  /**
+   * Size of the source file, where the caller already knows it.
+   *
+   * Optional on purpose: the callers that walk a directory get it from the
+   * listing they already have, and the single-file path from the lstat it
+   * already does, but nothing should take an extra round trip just to be able
+   * to show a percentage.
+   */
+  size?: number;
 }
+
+/** Bytes moved so far, and the total when it is known. */
+export type TransferProgressListener = (transferred: number, total?: number) => void;
 
 export default class TransferTask implements Task {
   readonly fileType: FileType;
@@ -39,6 +51,8 @@ export default class TransferTask implements Task {
   private readonly _TransferOption: TransferOption;
   private _handle: Readable;
   private _cancelled = false;
+  private _transferred = 0;
+  private _onProgress?: TransferProgressListener;
   // private _fileStatus: FileStatus;
 
   constructor(
@@ -73,6 +87,23 @@ export default class TransferTask implements Task {
 
   get targetFsPath() {
     return this._targetFsPath;
+  }
+
+  /** The source file's size, when the caller supplied it. */
+  get size(): number | undefined {
+    return this._TransferOption.size;
+  }
+
+  /**
+   * Reports bytes as they move. Has to be installed before the task runs.
+   *
+   * The scheduler emits its start event before calling `run()`, which is the
+   * window a listener has -- and the reason this is a method rather than a
+   * constructor argument: the task is built by the code that walks the tree,
+   * far from the code that draws progress.
+   */
+  trackProgress(listener: TransferProgressListener): void {
+    this._onProgress = listener;
   }
 
   get transferType() {
@@ -145,6 +176,35 @@ export default class TransferTask implements Task {
 
   isCancelled(): boolean {
     return this._cancelled;
+  }
+
+  /**
+   * Wraps the source so the bytes passing through it can be counted.
+   *
+   * A `data` listener on the source itself would be shorter, but listening
+   * switches a stream to flowing mode at once, and the transports do not all
+   * consume their input in the same tick -- the FTP one waits for its command
+   * queue first -- so the opening chunks would be delivered to nobody. A
+   * transform in the middle moves nothing until the transport pulls on it.
+   */
+  private _measured(source: Readable): Readable {
+    const report = this._onProgress;
+    if (!report) return source;
+
+    const counter = new Transform({
+      transform: (chunk: Buffer, _encoding, callback) => {
+        this._transferred += chunk.length;
+        report(this._transferred, this.size);
+        callback(null, chunk);
+      },
+    });
+
+    // pipe() forwards neither errors nor an abort, and cancel() aborts the
+    // source. Without this the transport would sit waiting for an end that is
+    // never coming.
+    source.on('error', error => counter.destroy(error));
+    source.pipe(counter);
+    return counter;
   }
 
   private async _transferFile() {
@@ -249,7 +309,7 @@ export default class TransferTask implements Task {
       if (useTempFile) {
         logger.info("uploading temp file: " + uploadTarget);
       }
-      await targetFs.put(this._handle, uploadTarget, {
+      await targetFs.put(this._measured(this._handle), uploadTarget, {
         mode,
         fd: uploadFd,
         autoClose: false,

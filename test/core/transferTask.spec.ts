@@ -216,3 +216,94 @@ describe('cancellation', () => {
     expect(t.isCancelled()).toBe(true);
   });
 });
+
+describe('reporting progress', () => {
+  test('reports bytes as they move, and the size when it was supplied', async () => {
+    const content = 'a'.repeat(200_000);
+    await fse.outputFile(at('big.txt'), content);
+    const reports: Array<[number, number | undefined]> = [];
+
+    const transfer = task(at('big.txt'), at('dst.txt'), { size: content.length });
+    transfer.trackProgress((transferred, total) => reports.push([transferred, total]));
+    await transfer.run();
+
+    expect(reports.length).toBeGreaterThan(1);
+    // Monotonic, ending at exactly the file size.
+    expect(reports.map(([transferred]) => transferred)).toEqual(
+      [...reports.map(([transferred]) => transferred)].sort((a, b) => a - b)
+    );
+    expect(reports[reports.length - 1][0]).toBe(content.length);
+    expect(new Set(reports.map(([, total]) => total))).toEqual(new Set([content.length]));
+    expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe(content);
+  });
+
+  test('the content still arrives intact through the counter', async () => {
+    // The counter sits in the middle of the transfer, so the first thing to
+    // check is that it is not losing or reordering anything.
+    const bytes = Buffer.from([0x00, 0xff, 0x0d, 0x0a, 0x1a, 0x80]);
+    await fse.outputFile(at('src.bin'), bytes);
+
+    const transfer = task(at('src.bin'), at('dst.bin'));
+    transfer.trackProgress(() => undefined);
+    await transfer.run();
+
+    expect((await fse.readFile(at('dst.bin'))).equals(bytes)).toBe(true);
+  });
+
+  test('reports without a total when the caller did not know the size', async () => {
+    await fse.outputFile(at('src.txt'), 'hello');
+    const totals: Array<number | undefined> = [];
+
+    const transfer = task(at('src.txt'), at('dst.txt'));
+    transfer.trackProgress((_transferred, total) => totals.push(total));
+    await transfer.run();
+
+    expect(totals.every(total => total === undefined)).toBe(true);
+  });
+
+  test('an empty file transfers without reporting anything', async () => {
+    await fse.outputFile(at('empty.txt'), '');
+    const reports: number[] = [];
+
+    const transfer = task(at('empty.txt'), at('dst.txt'));
+    transfer.trackProgress(transferred => reports.push(transferred));
+    await transfer.run();
+
+    expect(reports).toEqual([]);
+    expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('');
+  });
+
+  test('cancelling mid-stream ends the transfer instead of hanging on it', async () => {
+    // The counter is spliced between the source and the transport, and pipe()
+    // forwards neither errors nor an abort. Cancelling aborts the source by
+    // emitting 'error' on it, and with nothing listening there that throw comes
+    // out of whoever pressed Cancel, while the transport sits waiting for an
+    // end that is never coming.
+    //
+    // Cancel from outside the stream, the way the button does: an earlier
+    // version of this test called cancel() from inside the progress listener,
+    // which passes either way and proves nothing.
+    await fse.outputFile(at('big.txt'), 'a'.repeat(5_000_000));
+
+    const transfer = task(at('big.txt'), at('dst.txt'), { size: 5_000_000 });
+    const moving = new Promise<void>(resolve => {
+      transfer.trackProgress(transferred => {
+        if (transferred > 0) resolve();
+      });
+    });
+
+    const running = transfer.run();
+    await moving;
+    expect(() => transfer.cancel()).not.toThrow();
+
+    await expect(running).rejects.toBeTruthy();
+    expect(transfer.isCancelled()).toBe(true);
+  }, 10_000);
+
+  test('a transfer with no listener is untouched', async () => {
+    // The counter only exists when somebody asked for progress.
+    await fse.outputFile(at('src.txt'), 'hello world');
+    await task(at('src.txt'), at('dst.txt')).run();
+    expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('hello world');
+  });
+});

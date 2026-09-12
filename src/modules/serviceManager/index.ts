@@ -3,7 +3,7 @@ import * as path from 'path';
 import app from '../../app';
 import logger from '../../logger';
 import { simplifyPath, reportError } from '../../helper';
-import { FileService, TransferTask } from '../../core';
+import { FileService, TransferDirection, TransferTask } from '../../core';
 import UResource from '../../uResource';
 import { validateConfig } from '../config';
 import watcherService from '../watch/watcherService';
@@ -108,8 +108,17 @@ export function createFileService(config: any, workspace: string) {
       `${transferType} ${path.basename(localFsPath)}`,
       simplifyPath(localFsPath)
     );
+    // The scheduler emits this before running the task, which is the window in
+    // which a progress listener can still be installed.
+    app.transferProgress.begin(task, {
+      name: path.basename(localFsPath),
+      verb: transferType === TransferDirection.REMOTE_TO_LOCAL ? 'Downloading' : 'Uploading',
+      total: task.size,
+    });
+    task.trackProgress(transferred => app.transferProgress.advance(task, transferred));
   });
   service.afterTransfer((error, task) => {
+    app.transferProgress.end(task);
     const { localFsPath, transferType } = task;
     const filename = path.basename(localFsPath);
     const filepath = simplifyPath(localFsPath);

@@ -179,9 +179,66 @@ class FakeOutputChannel {
   dispose(): void {}
 }
 
+export const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
+
+/**
+ * A progress notification opened through `window.withProgress`.
+ *
+ * Recorded rather than discarded so a test can read what the user would see and
+ * press the Cancel button the real one offers.
+ */
+export class FakeProgress {
+  readonly messages: string[] = [];
+  finished = false;
+  private readonly _onCancel: Array<() => void> = [];
+
+  constructor(readonly options: { title?: string; location?: number; cancellable?: boolean }) {}
+
+  report(value: { message?: string }): void {
+    if (value.message !== undefined) this.messages.push(value.message);
+  }
+
+  get lastMessage(): string | undefined {
+    return this.messages[this.messages.length - 1];
+  }
+
+  /** Presses the notification's Cancel button. */
+  cancel(): void {
+    for (const listener of [...this._onCancel]) listener();
+  }
+
+  get token(): FakeCancellationToken {
+    return {
+      isCancellationRequested: false,
+      onCancellationRequested: (listener: () => void) => {
+        this._onCancel.push(listener);
+        return new Disposable(() => undefined);
+      },
+    };
+  }
+}
+
+export interface FakeCancellationToken {
+  isCancellationRequested: boolean;
+  onCancellationRequested(listener: () => void): Disposable;
+}
+
+/** Every progress notification opened so far. Tests clear it themselves. */
+export const openedProgress: FakeProgress[] = [];
+
 export const window = strict('window', {
   createStatusBarItem: () => new FakeStatusBarItem(),
   createOutputChannel: (name: string) => new FakeOutputChannel(name),
+  async withProgress<R>(
+    options: { title?: string; location?: number; cancellable?: boolean },
+    task: (progress: FakeProgress, token: FakeCancellationToken) => Thenable<R>
+  ): Promise<R> {
+    const progress = new FakeProgress(options);
+    openedProgress.push(progress);
+    const result = await task(progress, progress.token);
+    progress.finished = true;
+    return result;
+  },
 });
 
 export const workspace = strict('workspace', {

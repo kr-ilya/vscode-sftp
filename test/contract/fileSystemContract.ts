@@ -66,6 +66,11 @@ export function runFileSystemContract(
   }, timeoutMs);
 
   afterAll(async () => {
+    // There is no subject when setup itself failed -- an unreachable server,
+    // say. Teardown then threw "Cannot read properties of undefined", which is
+    // the error the reader sees instead of the one that actually happened.
+    if (!subject) return;
+
     try {
       await fs.rmdir(root, true);
     } catch {
