@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { showTextDocument } from '../../host';
 import {
   upath,
   FileService,
@@ -13,35 +12,23 @@ import {
   COMMAND_REMOTEEXPLORER_VIEW_CONTENT,
   COMMAND_REMOTEEXPLORER_EDITINLOCAL,
 } from '../../constants';
+import { toLocalPath } from '../../helper';
 import { getAllFileService } from '../serviceManager';
 import { getExtensionSetting } from '../ext';
 
 type Id = number;
 
-const previewDocumentPathPrefix = '/~ ';
-
 const DEFAULT_FILES_EXCLUDE = ['.git', '.svn', '.hg', 'CVS', '.DS_Store'];
-/**
- * covert the url path for a customed docuemnt title
- *
- *  There is no api to custom title.
- *  So we change url path for custom title.
- *  This is not break anything because we get fspth from uri.query.'
- */
-function makePreivewUrl(uri: vscode.Uri) {
-  // const query = querystring.parse(uri.query);
-  // query.originPath = uri.path;
-  // query.originQuery = uri.query;
-
-  return uri.with({
-    path: previewDocumentPathPrefix + upath.basename(uri.path),
-    // query: querystring.stringify(query),
-  });
-}
 
 interface ExplorerChild {
   resource: Resource;
   isDirectory: boolean;
+  /**
+   * The listing entry this item came from, kept so decorations can judge the
+   * file without listing the directory a second time. Absent on roots, which
+   * come from the configuration rather than from a listing.
+   */
+  entry?: FileEntry;
 }
 
 export interface ExplorerRoot extends ExplorerChild {
@@ -62,18 +49,33 @@ function dirFirstSort(fileA: ExplorerItem, fileB: ExplorerItem) {
   return fileA.isDirectory ? -1 : 1;
 }
 
-export default class RemoteTreeData
-  implements vscode.TreeDataProvider<ExplorerItem>, vscode.TextDocumentContentProvider {
+export default class RemoteTreeData implements vscode.TreeDataProvider<ExplorerItem> {
   private _roots: ExplorerRoot[] | null;
   private _rootsMap: Map<Id, ExplorerRoot> | null;
-  private _map: Map<vscode.Uri['query'], ExplorerItem>;
+  private _map = new Map<vscode.Uri['query'], ExplorerItem>();
 
   private _onDidChangeFolder: vscode.EventEmitter<ExplorerItem> = new vscode.EventEmitter<
     ExplorerItem
   >();
   private _onDidChangeFile: vscode.EventEmitter<vscode.Uri> = new vscode.EventEmitter<vscode.Uri>();
   readonly onDidChangeTreeData: vscode.Event<ExplorerItem> = this._onDidChangeFolder.event;
-  readonly onDidChange: vscode.Event<vscode.Uri> = this._onDidChangeFile.event;
+  /**
+   * A listed file's contents may have changed, so anything previewing it has to
+   * re-read. Answered by RemoteContentProvider, which is what actually fetches
+   * the bytes.
+   */
+  readonly onDidChangeFile: vscode.Event<vscode.Uri> = this._onDidChangeFile.event;
+  private _onDidUpdateEntries: vscode.EventEmitter<vscode.Uri[]> = new vscode.EventEmitter<
+    vscode.Uri[]
+  >();
+  /**
+   * A directory has been listed and the facts held for its entries replaced.
+   *
+   * This, rather than the refresh that asked for the listing, is when anything
+   * judging those files has to look again: a refresh only tells the view to
+   * re-fetch, and the answer arrives later.
+   */
+  readonly onDidUpdateEntries: vscode.Event<vscode.Uri[]> = this._onDidUpdateEntries.event;
 
   async refresh(item?: ExplorerItem): Promise<any> {
     // refresh root
@@ -112,13 +114,13 @@ export default class RemoteTreeData
       const children = await this.getChildren(item);
       children
         .filter(i => !i.isDirectory)
-        .forEach(i => this._onDidChangeFile.fire(makePreivewUrl(i.resource.uri)));
+        .forEach(i => this._onDidChangeFile.fire(i.resource.uri));
     } else {
       const parent = await this.getParent(item);
       if (parent) {
         this._onDidChangeFolder.fire(parent);
       }
-      this._onDidChangeFile.fire(makePreivewUrl(item.resource.uri));
+      this._onDidChangeFile.fire(item.resource.uri);
     }
   }
 
@@ -172,7 +174,7 @@ export default class RemoteTreeData
       return !ignore.ignores(relativePath);
     }
 
-    return fileEntries
+    const children = fileEntries
       .filter(filterFile)
       .map(file => {
         const isDirectory = file.type === FileType.Directory;
@@ -181,19 +183,21 @@ export default class RemoteTreeData
         });
         const mapItem = this._map.get(newResource.uri.query);
         if (mapItem) {
+          // The listing is fresh and the facts are not part of the item's
+          // identity, so take the new ones rather than keeping whatever was
+          // true the last time this folder was opened.
+          mapItem.entry = file;
           return mapItem;
-        } else {
-          const newItem = {
-            resource: UResource.updateResource(item.resource, {
-              remotePath: file.fspath,
-            }),
-            isDirectory,
-          };
-          this._map.set(newItem.resource.uri.query, newItem);
-          return newItem;
         }
+
+        const newItem: ExplorerChild = { resource: newResource, isDirectory, entry: file };
+        this._map.set(newItem.resource.uri.query, newItem);
+        return newItem;
       })
       .sort(dirFirstSort);
+
+    this._onDidUpdateEntries.fire(children.map(child => child.resource.uri));
+    return children;
   }
 
   async getParent(item: ExplorerChild): Promise<ExplorerItem> {
@@ -225,6 +229,26 @@ export default class RemoteTreeData
     }
   }
 
+  /**
+   * What is known about a listed file, and where its local counterpart would
+   * be. Supplied to the decoration provider, which has only a URI to go on.
+   */
+  findEntry(uri: vscode.Uri): { entry: FileEntry; localPath: string } | undefined {
+    const item = this._map.get(uri.query);
+    const root = this.findRoot(uri);
+    if (!item || !item.entry || !root) return undefined;
+
+    // The service's own base directory, not `config.context`: context is
+    // optional in the configuration file, and when it is absent the base is the
+    // workspace folder. Reading it from the config would hand `undefined` to
+    // path.join for every ordinary configuration.
+    const { config, fileService } = root.explorerContext;
+    return {
+      entry: item.entry,
+      localPath: toLocalPath(item.resource.fsPath, config.remotePath, fileService.baseDir),
+    };
+  }
+
   findRoot(uri: vscode.Uri): ExplorerRoot | null | undefined {
     if (!this._rootsMap) {
       return null;
@@ -232,29 +256,6 @@ export default class RemoteTreeData
 
     const rootId = UResource.makeResource(uri).remoteId;
     return this._rootsMap.get(rootId);
-  }
-
-  async provideTextDocumentContent(
-    uri: vscode.Uri,
-    token: vscode.CancellationToken
-  ): Promise<string> {
-    const root = this.findRoot(uri);
-    if (!root) {
-      throw new Error(`Can't find remote for resource ${uri}.`);
-    }
-
-    const config = root.explorerContext.config;
-    const remotefs = await root.explorerContext.fileService.getRemoteFileSystem(config);
-    const buffer = await remotefs.readFile(UResource.makeResource(uri).fsPath);
-    return buffer.toString();
-  }
-
-  showItem(item: ExplorerItem): void {
-    if (item.isDirectory) {
-      return;
-    }
-
-    showTextDocument(makePreivewUrl(item.resource.uri));
   }
 
   private _getRoots(): ExplorerRoot[] {

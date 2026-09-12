@@ -105,6 +105,17 @@ export class Uri {
     return this._fsPath ?? this.path;
   }
 
+  /** Part of the real Uri; VS Code serializes URIs when it hands them across. */
+  toJSON(): unknown {
+    return {
+      scheme: this.scheme,
+      authority: this.authority,
+      path: this.path,
+      query: this.query,
+      fragment: this.fragment,
+    };
+  }
+
   toString(): string {
     const query = this.query ? `?${this.query}` : '';
     const fragment = this.fragment ? `#${this.fragment}` : '';
@@ -179,6 +190,11 @@ class FakeOutputChannel {
   dispose(): void {}
 }
 
+/** Identifies a colour from the active theme; compared by id in tests. */
+export class ThemeColor {
+  constructor(readonly id: string) {}
+}
+
 export const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
 
 /**
@@ -229,6 +245,7 @@ export const openedProgress: FakeProgress[] = [];
 export const window = strict('window', {
   createStatusBarItem: () => new FakeStatusBarItem(),
   createOutputChannel: (name: string) => new FakeOutputChannel(name),
+  registerFileDecorationProvider: () => new Disposable(),
   async withProgress<R>(
     options: { title?: string; location?: number; cancellable?: boolean },
     task: (progress: FakeProgress, token: FakeCancellationToken) => Thenable<R>

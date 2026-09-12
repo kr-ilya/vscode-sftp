@@ -6,7 +6,7 @@ import { simplifyPath, reportError } from '../../helper';
 import { FileService, TransferDirection, TransferTask } from '../../core';
 import UResource from '../../uResource';
 import { validateConfig } from '../config';
-import watcherService from '../watch/watcherService';
+import watcherService, { recordTransferred } from '../watch/watcherService';
 import Trie from './trie';
 
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;
@@ -133,6 +133,12 @@ export function createFileService(config: any, workspace: string) {
     } else {
       logger.info(`${transferType} ${localFsPath}`);
       app.sftpBarItem.showMsg(`done ${filename}`, filepath, 2000 * 2);
+      // Every successful transfer updates the change tracker, not just the ones
+      // the watcher started. Otherwise an upload from a command leaves it
+      // holding what was true beforehand.
+      void recordTransferred(localFsPath).catch(error =>
+        logger.debug('[watch] could not record the transfer', error)
+      );
     }
   });
 

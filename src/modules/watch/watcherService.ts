@@ -7,13 +7,13 @@ import { createEventBatcher, type PendingEvent } from '../../core/watch/batch';
 import { createExpectationRegistry } from '../../core/watch/expectations';
 import { readFacts, readDigest, readFileState } from '../../core/watch/facts';
 import { processBatch, recordSynced, forget } from '../../core/watch/pipeline';
-import { recordFrom } from '../../core/watch/state';
+import { recordFrom, type StateRecord } from '../../core/watch/state';
 import { createCounters, formatTrace, type WatchCounters } from '../../core/watch/diagnostics';
 import { defaultWatchPolicy } from '../../core/watch/policy';
 import { loadPersistentState, type PersistentState } from './stateStore';
 import { getWatchOutput } from './output';
 import { walkFiles } from './walk';
-import { fileDepth } from '../../core/util/paths';
+import { fileDepth, isSubpathOf } from '../../core/util/paths';
 
 /**
  * The editor-facing half of change detection.
@@ -234,6 +234,44 @@ function registerTree(base: string, handle: TreeHandle): void {
 
 export function getTreeHandles(): ReadonlyMap<string, TreeHandle> {
   return handles;
+}
+
+/**
+ * Records a file as synced after a transfer that did not come from the watcher.
+ *
+ * Until now only the watcher's own uploads updated the tracker, so a file sent
+ * by a command or from the tree left it holding what was true before -- which
+ * made the next event for that file re-upload something the server already had,
+ * and made the explorer show it as differing from a copy it exactly matched.
+ *
+ * Costs nothing where no watcher is configured: there is no tracker to update.
+ */
+export async function recordTransferred(localPath: string): Promise<void> {
+  for (const [base, handle] of handles) {
+    if (localPath === base || isSubpathOf(base, localPath)) {
+      await recordSynced(handle.deps.keyer(localPath), localPath, handle.deps);
+      handle.persistent.markDirty();
+      return;
+    }
+  }
+}
+
+/**
+ * What was last recorded as synced for a local path, if anything.
+ *
+ * The record is the only thing in the extension that knows a file's *content*
+ * was on the server, rather than that its size and timestamp looked right. It
+ * exists only where a watcher is configured, so callers have to work without it
+ * -- see core/explorer/entryStatus, which refines its answer when it is there
+ * and declines to guess when it is not.
+ */
+export function findSyncedRecord(localPath: string): StateRecord | undefined {
+  for (const [base, handle] of handles) {
+    if (localPath === base || isSubpathOf(base, localPath)) {
+      return handle.deps.store.get(handle.deps.keyer(localPath));
+    }
+  }
+  return undefined;
 }
 
 /**

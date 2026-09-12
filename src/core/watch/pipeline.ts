@@ -2,7 +2,7 @@ import { decide, type Decision } from './decide';
 import type { PendingEvent } from './batch';
 import type { PathKey, PathKeyer } from './pathkey';
 import type { StateStore, EntryFacts, ContentDigest } from './state';
-import { recordFrom } from './state';
+import { recordFrom, factsMatchRecord } from './state';
 import type { ExpectationRegistry } from './expectations';
 import type { WatchPolicy } from './policy';
 import { countDecision, type TraceEntry, type WatchCounters } from './diagnostics';
@@ -168,6 +168,15 @@ export async function recordSynced(
 ): Promise<void> {
   const facts = await deps.readFacts(path);
   if (facts.type !== 'file') return;
+
+  // Already recorded, with the facts still matching: there is nothing to learn
+  // by reading the file again. This is the same assumption the metadata gate
+  // rests on everywhere else, and it matters because two callers now record the
+  // same transfer -- the transfer itself, and this pipeline after the upload it
+  // asked for returns.
+  const existing = deps.store.get(key);
+  if (existing && factsMatchRecord(facts, existing)) return;
+
   try {
     const digest = await deps.readDigest(path);
     deps.store.set(key, recordFrom(facts, digest, deps.now()));
