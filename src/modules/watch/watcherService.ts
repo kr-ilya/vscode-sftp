@@ -100,8 +100,23 @@ async function createTree(
     readDigest: (p: string) => readDigest(p),
     now: Date.now,
     counters,
-    onTrace: (entry: Parameters<typeof formatTrace>[0]) => output.appendLine(formatTrace(entry)),
+    onTrace: (entry: Parameters<typeof formatTrace>[0]) => pendingTrace.push(formatTrace(entry)),
   };
+
+  /**
+   * Trace lines are written once per batch rather than once per event.
+   *
+   * A checkout between distant branches produces thousands of events, and every
+   * `appendLine` is a call across to the window. The channel ends up with the
+   * same lines in the same order; they simply arrive together.
+   */
+  const pendingTrace: string[] = [];
+  function flushTrace(): void {
+    if (pendingTrace.length === 0) return;
+    pendingTrace.push('');
+    output.append(pendingTrace.join('\n'));
+    pendingTrace.length = 0;
+  }
 
   const batcher = createEventBatcher({
     keyer,
@@ -118,6 +133,8 @@ async function createTree(
     } catch (error) {
       logger.error(error, '[watch] deciding on a batch');
       return;
+    } finally {
+      flushTrace();
     }
     persistent.markDirty();
 

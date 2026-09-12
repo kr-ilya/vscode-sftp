@@ -10,5 +10,40 @@ import { LRUCache } from 'lru-cache';
  *
  * Invalidated by the save handler, so editing ~/.ssh/config takes effect
  * without a reload.
+ *
+ * `generation` counts changes to the contents. Anything derived from a cached
+ * file can record the generation it was built at and rebuild when it moves;
+ * eviction does not count, because an evicted entry is re-read to the same
+ * bytes. The save handler asks to drop every saved path, so a delete that finds
+ * nothing must not count either -- otherwise ordinary editing would invalidate
+ * derived work that does not depend on the file at all.
  */
-export const fileContentCache = new LRUCache<string, string>({ max: 6 });
+const entries = new LRUCache<string, string>({ max: 6 });
+let generation = 0;
+
+export const fileContentCache = {
+  has(key: string): boolean {
+    return entries.has(key);
+  },
+
+  get(key: string): string | undefined {
+    return entries.get(key);
+  },
+
+  set(key: string, value: string): void {
+    if (entries.get(key) === value) return;
+    entries.set(key, value);
+    generation += 1;
+  },
+
+  delete(key: string): void {
+    if (!entries.has(key)) return;
+    entries.delete(key);
+    generation += 1;
+  },
+
+  /** Bumped whenever a cached file's contents change. */
+  get generation(): number {
+    return generation;
+  },
+};

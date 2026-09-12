@@ -3,6 +3,7 @@ import logger from './logger';
 import upath from './upath';
 import Ignore from './ignore';
 import { FileSystem } from './fs';
+import { fileContentCache } from './fileContentCache';
 import * as path from 'path';
 import {
   chooseDefaultPort,
@@ -156,6 +157,8 @@ export default class FileService {
   private _pendingTransferTasks: Set<TransferTask> = new Set();
   private _transferSchedulers: TransferScheduler[] = [];
   private _transferGroup: TransferGroup | null = null;
+  private readonly _configMemo = new Map<string, ServiceConfig>();
+  private _configMemoGeneration = -1;
   private _config: FileServiceConfig;
   private _configValidator: ConfigValidator | undefined;
   private _activeProfileProvider: () => string | undefined | null = () => undefined;
@@ -300,7 +303,38 @@ export default class FileService {
     return createRemoteIfNoneExist(getHostInfo(config));
   }
 
+  /**
+   * The configuration a connection and a transfer actually run against.
+   *
+   * Memoised because it is asked for once per file handled -- a five thousand
+   * file sync asked five thousand times -- and answering costs about a third of
+   * a millisecond: the ssh_config is parsed, the ignore rules compiled, and a
+   * handful of objects copied, every time, from inputs that do not move.
+   *
+   * The memo is keyed on the profile and on the content cache's generation, so
+   * editing ~/.ssh/config or the ignore file drops it; changing
+   * .vscode/sftp.json disposes the service outright. A failure is not memoised,
+   * so an invalid configuration keeps reporting itself on every call.
+   */
   getConfig(useProfile = this._activeProfileProvider()): ServiceConfig {
+    const memoKey = useProfile ?? '';
+    const generation = fileContentCache.generation;
+    if (this._configMemoGeneration !== generation) {
+      this._configMemo.clear();
+      this._configMemoGeneration = generation;
+    }
+
+    const memoised = this._configMemo.get(memoKey);
+    if (memoised) {
+      return memoised;
+    }
+
+    const resolved = this._resolveConfig(useProfile);
+    this._configMemo.set(memoKey, resolved);
+    return resolved;
+  }
+
+  private _resolveConfig(useProfile: string | undefined | null): ServiceConfig {
     let config = this._config;
     const hasProfile =
       config.profiles && Object.keys(config.profiles).length > 0;
