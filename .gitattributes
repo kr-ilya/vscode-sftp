@@ -1,0 +1,8 @@
+# The repository is LF throughout. One file arrived from upstream with CRLF
+# and was normalised during the quality pass; this keeps it from recurring and
+# from turning a one-line change into a whole-file diff.
+* text=auto eol=lf
+
+*.png binary
+*.gif binary
+*.vsix binary
