@@ -1,17 +1,14 @@
 import { reportError } from '../../helper';
 import logger from '../../logger';
 
-export interface ITarget {
-  fsPath: string;
-}
-
-export interface CommandOption {
-  [x: string]: any;
-}
-
+/**
+ * One registered command.
+ *
+ * `run` is what VS Code calls, which is why it reports rather than rethrows: an
+ * exception out of a command handler reaches the user as a generic host error
+ * with no context, and the output channel is where the detail lives.
+ */
 export default abstract class Command {
-  private _commandDoneListeners: Array<(...args: any[]) => void> = [];
-
   /**
    * Identity comes from the factory that creates the subclass. It used to be
    * assigned afterwards by each subclass constructor, which is why the fields
@@ -19,29 +16,14 @@ export default abstract class Command {
    */
   constructor(readonly id: string, readonly name: string) {}
 
-  onCommandDone(listener) {
-    this._commandDoneListeners.push(listener);
+  protected abstract doCommandRun(...args: unknown[]): unknown | Promise<unknown>;
 
-    return () => {
-      const index = this._commandDoneListeners.indexOf(listener);
-      if (index > -1) this._commandDoneListeners.splice(index, 1);
-    };
-  }
-
-  protected abstract doCommandRun(...args: any[]): unknown | Promise<unknown>;
-
-  async run(...args) {
+  async run(...args: unknown[]): Promise<void> {
     logger.trace(`run command '${this.name}'`);
     try {
       await this.doCommandRun(...args);
     } catch (error) {
       reportError(error);
-    } finally {
-      this.commitCommandDone(...args);
     }
-  }
-
-  private commitCommandDone(...args: any[]) {
-    this._commandDoneListeners.forEach(listener => listener(...args));
   }
 }
