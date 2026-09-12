@@ -43,7 +43,7 @@ function task(
     {
       fileType,
       transferDirection: TransferDirection.LOCAL_TO_REMOTE,
-      transferOption: { mode: 0o644, perserveTargetMode: false, ...option },
+      transferOption: { mode: 0o644, preserveTargetMode: false, ...option },
     } as never
   );
 }

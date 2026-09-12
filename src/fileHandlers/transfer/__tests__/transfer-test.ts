@@ -123,7 +123,7 @@ describe('transfer algorithm', () => {
           targetFsPath: '/remote',
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -181,7 +181,7 @@ describe('transfer algorithm', () => {
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
             delete: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -242,7 +242,7 @@ describe('transfer algorithm', () => {
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
             delete: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -300,7 +300,7 @@ describe('transfer algorithm', () => {
             transferOption: {
               skipCreate: true,
               delete: false,
-              perserveTargetMode: false,
+              preserveTargetMode: false,
             },
           },
           collect
@@ -356,7 +356,7 @@ describe('transfer algorithm', () => {
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
             skipCreate: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -404,7 +404,7 @@ describe('transfer algorithm', () => {
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
             update: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -462,7 +462,7 @@ describe('transfer algorithm', () => {
           transferDirection: TransferDirection.LOCAL_TO_REMOTE,
           transferOption: {
             bothDiretions: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect
@@ -525,7 +525,7 @@ describe('transfer algorithm', () => {
           transferOption: {
             skipCreate: true,
             bothDiretions: true,
-            perserveTargetMode: false,
+            preserveTargetMode: false,
           },
         },
         collect

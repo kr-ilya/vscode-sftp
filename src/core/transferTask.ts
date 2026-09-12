@@ -24,7 +24,7 @@ export interface TransferOption {
   filePerm?: number;
   dirPerm?: number;
   fallbackMode?: number;
-  perserveTargetMode: boolean;
+  preserveTargetMode: boolean;
   useTempFile?: boolean;
   openSsh?: boolean;
   /**
@@ -48,7 +48,7 @@ export default class TransferTask implements Task {
   private readonly _srcFs: FileSystem;
   private readonly _targetFs: FileSystem;
   private readonly _transferDirection: TransferDirection;
-  private readonly _TransferOption: TransferOption;
+  private readonly _transferOption: TransferOption;
   private _handle: Readable | undefined;
   private _cancelled = false;
   private _transferred = 0;
@@ -68,7 +68,7 @@ export default class TransferTask implements Task {
     this._targetFsPath = target.fsPath;
     this._srcFs = src.fileSystem;
     this._targetFs = target.fileSystem;
-    this._TransferOption = option.transferOption;
+    this._transferOption = option.transferOption;
     this._transferDirection = option.transferDirection;
     this.fileType = option.fileType;
   }
@@ -91,7 +91,7 @@ export default class TransferTask implements Task {
 
   /** The source file's size, when the caller supplied it. */
   get size(): number | undefined {
-    return this._TransferOption.size;
+    return this._transferOption.size;
   }
 
   /**
@@ -231,25 +231,25 @@ export default class TransferTask implements Task {
     const srcFs = this._srcFs;
     const targetFs = this._targetFs;
     const {
-      perserveTargetMode,
+      preserveTargetMode,
       openSsh,
       fallbackMode,
       atime,
       mtime,
       filePerm
-    } = this._TransferOption;
+    } = this._transferOption;
     // Set the mode if it's specified in the config, otherwise get mode from server.
-    let mode = filePerm ? parseInt(String(filePerm), 8) : this._TransferOption.mode;
+    let mode = filePerm ? parseInt(String(filePerm), 8) : this._transferOption.mode;
     let targetFd; // Destination file
     let uploadFd; // Temp file or destination file when no temp file is used
     // Not const: both can be stood down if the directory refuses a staging file.
-    let useTempFile = this._TransferOption.useTempFile !== false;
+    let useTempFile = this._transferOption.useTempFile !== false;
     let uploadTarget = useTempFile ? this._tempTargetPath(target) : target;
     if (useTempFile) staged.push(uploadTarget);
 
     // Use mode first.
-    // Then check perserveTargetMode and fallback to fallbackMode if fail to get mode of target
-    if (mode === undefined && perserveTargetMode) {
+    // Then check preserveTargetMode and fallback to fallbackMode if fail to get mode of target
+    if (mode === undefined && preserveTargetMode) {
       if (useTempFile) {
         [targetFd, uploadFd] = await Promise.all([
           targetFs.open(target, 'r')  // Get handle for reading the target mode
