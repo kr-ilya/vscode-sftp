@@ -86,7 +86,7 @@ async function transferFolder(
   // If dirPerm is configured, we chmod the remote directory after creation.
   if(config.transferOption.dirPerm) {
     logger.info("chmod remote directory as configured by dirPerm, dirPerm is: ", config.transferOption.dirPerm)
-    targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
+    await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8));
   }
 
   const fileEntries = await srcFs.list(srcFsPath);
@@ -162,7 +162,10 @@ async function transferWithType(
         // If dirPerm is configured, we chmod the remote directory after creation.
         if(config.transferOption.dirPerm) {
           logger.info("Running chmod on remote directory with perm: ", config.transferOption.dirPerm)
-          targetFs.chmod(targetFs.pathResolver.dirname(targetFsPath), parseInt(String(config.transferOption.dirPerm), 8));
+          await targetFs.chmod(
+            targetFs.pathResolver.dirname(targetFsPath),
+            parseInt(String(config.transferOption.dirPerm), 8)
+          );
         }
       }
       // <<< save before upload: start
@@ -178,7 +181,7 @@ async function transferWithType(
         }
       }
       // save before upload: end >>>
-      transferFile(config, fileType, collect);
+      await transferFile(config, fileType, collect);
       break;
     default:
       logger.warn(`Unsupported file type (type = ${fileType}). File ${config.srcFsPath}`);

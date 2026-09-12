@@ -72,7 +72,7 @@ export async function activate(context: vscode.ExtensionContext) {
       app.sftpBarItem.reset();
     }
     if (app.remoteExplorer) {
-      app.remoteExplorer.refresh();
+      void app.remoteExplorer.refresh();
     }
     // A profile can override `watcher` and `ignore`, and change-detection state
     // is kept per profile -- one file legitimately has different state for

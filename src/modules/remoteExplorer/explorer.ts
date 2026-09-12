@@ -85,34 +85,31 @@ export default class RemoteExplorer {
     return this._treeDataProvider.findRoot(remoteUri);
   }
 
-  private _refreshSelection() {
+  private async _refreshSelection(): Promise<void> {
     if (this._explorerView.selection.length) {
-      this._explorerView.selection.forEach(item => this.refresh(item));
-    } else {
-      this.refresh();
+      await Promise.all(this._explorerView.selection.map(item => this.refresh(item)));
+      return;
     }
+    await this.refresh();
   }
 
-  private _refreshActiveRemoteFile() {
+  private async _refreshActiveRemoteFile(): Promise<void> {
     const focusedEditor = vscode.window.activeTextEditor;
-    if (focusedEditor) {
-
-      const remoteFileUri = focusedEditor.document.uri;
-      const root = this._treeDataProvider.findRoot(remoteFileUri);
-      const incompleteResource = UResource.makeResource(remoteFileUri);
-
-      if (!root) {
-        return;
-      }
-      const remoteFileItem = {
-        resource: UResource.updateResource(root.resource, {
-          remotePath: incompleteResource.fsPath
-        }),
-        isDirectory: false
-      };
-
-      this.refresh(remoteFileItem);
+    if (!focusedEditor) {
+      return;
     }
-    
+
+    const remoteFileUri = focusedEditor.document.uri;
+    const root = this._treeDataProvider.findRoot(remoteFileUri);
+    if (!root) {
+      return;
+    }
+
+    await this.refresh({
+      resource: UResource.updateResource(root.resource, {
+        remotePath: UResource.makeResource(remoteFileUri).fsPath,
+      }),
+      isDirectory: false,
+    });
   }
 }

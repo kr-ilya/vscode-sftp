@@ -32,7 +32,6 @@
  * `opendir(path, cb)`, `close(handle, cb)`. That is what the loose parameter
  * type is for; nothing here reads an argument other than the last.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyCall = (...args: any[]) => unknown;
 type Callback = (...args: any[]) => unknown;
 

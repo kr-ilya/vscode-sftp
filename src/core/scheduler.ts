@@ -115,7 +115,9 @@ class Scheduler {
     }
 
     if (!this._isPaused && this._pendingCount < this._concurrency) {
-      this._runTask(task);
+      // Not awaited anywhere: a task's outcome is delivered through the done
+      // event, and awaiting here would serialise the very thing being scheduled.
+      void this._runTask(task);
     } else {
       this._queue.enqueue(task, opt);
     }
@@ -132,7 +134,7 @@ class Scheduler {
 
     this._isPaused = false;
     while (this.size > 0 && this._pendingCount < this._concurrency) {
-      this._runTask(this._queue.dequeue());
+      void this._runTask(this._queue.dequeue());
     }
   }
 
@@ -171,7 +173,7 @@ class Scheduler {
   private _next() {
     if (this.size > 0) {
       if (!this._isPaused) {
-        this._runTask(this._queue.dequeue());
+        void this._runTask(this._queue.dequeue());
       }
     } else if (this._pendingCount <= 0) {
       this._eventEmitter.emit(EVENT_IDLE);

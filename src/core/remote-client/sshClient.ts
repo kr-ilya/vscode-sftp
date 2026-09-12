@@ -202,7 +202,10 @@ export default class SSHClient extends RemoteClient {
                   finish,
                   answers
                 );
-              });
+              })
+              // The prompt itself failing left nothing to settle the connect
+              // promise: the connection would hang instead of reporting.
+              .catch(reject);
           } else {
             finish(answers);
           }

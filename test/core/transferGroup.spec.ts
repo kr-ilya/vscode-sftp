@@ -73,12 +73,12 @@ describe('a batch observes only its own work', () => {
     const doomed = group.openBatch();
     const survivor = group.openBatch();
 
-    let doomedRan = 0;
+    let doomedCancelled = 0;
     let survivorRan = 0;
     // Occupy the single slot so the rest are still queued when stop() lands.
     survivor.add({ async run() { await tick(20); survivorRan += 1; } });
     for (let i = 0; i < 5; i++) {
-      doomed.add({ cancel() {}, async run() { doomedRan += 1; } });
+      doomed.add({ cancel() { doomedCancelled += 1; }, async run() {} });
     }
     for (let i = 0; i < 3; i++) {
       survivor.add({ async run() { survivorRan += 1; } });
@@ -87,6 +87,9 @@ describe('a batch observes only its own work', () => {
     doomed.stop();
     await survivor.run();
 
+    // Every task the stopped batch queued was cancelled, and none of the
+    // other batch's were -- the counter was collected and never asserted.
+    expect(doomedCancelled).toBe(5);
     expect(survivorRan).toBe(4);
   });
 });

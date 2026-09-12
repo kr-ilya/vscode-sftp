@@ -3,7 +3,17 @@ import UResource from '../uResource';
 import app from '../app';
 import logger from '../logger';
 
-export async function refreshRemoteExplorer(target: UResource, isDirectory: FileService | boolean) {
+/**
+ * Redraws the remote explorer after an operation.
+ *
+ * Called and deliberately not awaited -- the transfer it follows has already
+ * succeeded -- which is why every failure is contained here rather than left to
+ * become an unhandled rejection at each call site.
+ */
+export async function refreshRemoteExplorer(
+  target: UResource,
+  isDirectory: FileService | boolean
+): Promise<void> {
   if (isDirectory instanceof FileService) {
     const fileService = isDirectory;
     const localFs = fileService.getLocalFileSystem();

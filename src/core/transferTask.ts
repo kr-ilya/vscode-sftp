@@ -270,7 +270,10 @@ export default class TransferTask implements Task {
         ]);
 
         if (useTempFile) {
-          targetFs.close(targetFd);
+          // The handle was opened only to read the target's mode. Closing it
+          // was fire-and-forget, so a failure went nowhere and the close raced
+          // the rest of the transfer.
+          await targetFs.close(targetFd);
         }
 
       } else {
@@ -337,7 +340,7 @@ export default class TransferTask implements Task {
           // reading from the server at that moment.
           try {
             await targetFs.rename(uploadTarget, target);
-          } catch (error) {
+          } catch {
             // Windows refuses to rename onto an existing file, and some SFTP
             // servers do too. Removing first is the fallback, not the plan.
             try {

@@ -1,5 +1,6 @@
 import { COMMAND_LIST } from '../constants';
 import { showTextDocument } from '../host';
+import logger from '../logger';
 import { FileType } from '../core';
 import { downloadFile, downloadFolder } from '../fileHandlers';
 import { checkFileCommand } from './abstract/createCommand';
@@ -17,7 +18,8 @@ export default checkFileCommand({
       try {
         await showTextDocument(ctx.target.localUri);
       } catch (error) {
-        // ignore
+        // Showing the file is a convenience; the download itself succeeded.
+        logger.debug('could not open the downloaded file', error);
       }
     } else {
       await downloadFolder(ctx);

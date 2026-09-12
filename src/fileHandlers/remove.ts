@@ -35,6 +35,6 @@ export const removeRemote = createFileHandler<FileHandleOption & { skipDir?: boo
     };
   },
   afterHandle() {
-    refreshRemoteExplorer(this.target, false);
+    void refreshRemoteExplorer(this.target, false);
   },
 });

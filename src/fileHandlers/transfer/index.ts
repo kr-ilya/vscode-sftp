@@ -110,7 +110,7 @@ export const sync2Remote = createFileHandler<SyncOption>({
     };
   },
   afterHandle() {
-    refreshRemoteExplorer(this.target, true);
+    void refreshRemoteExplorer(this.target, true);
   },
 });
 
@@ -163,7 +163,7 @@ export const upload = createFileHandler<TransferOption>({
     };
   },
   afterHandle() {
-    refreshRemoteExplorer(this.target, this.fileService);
+    void refreshRemoteExplorer(this.target, this.fileService);
   },
 });
 
@@ -181,7 +181,7 @@ export const uploadFile = createFileHandler<TransferOption>({
     };
   },
   afterHandle() {
-    refreshRemoteExplorer(this.target, false);
+    void refreshRemoteExplorer(this.target, false);
   },
 });
 
@@ -199,7 +199,7 @@ export const uploadFolder = createFileHandler<TransferOption>({
     };
   },
   afterHandle() {
-    refreshRemoteExplorer(this.target, true);
+    void refreshRemoteExplorer(this.target, true);
   },
 });
 

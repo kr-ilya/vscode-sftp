@@ -2,6 +2,7 @@ import * as path from 'path';
 import { Uri } from 'vscode';
 import { COMMAND_LIST_ACTIVEFOLDER } from '../constants';
 import { showTextDocument } from '../host';
+import logger from '../logger';
 import { FileType } from '../core';
 import { downloadFile, downloadFolder } from '../fileHandlers';
 import { checkCommand } from './abstract/createCommand';
@@ -45,7 +46,8 @@ export default checkCommand({
       try {
         await showTextDocument(localUri);
       } catch (error) {
-        // ignore
+        // Showing the file is a convenience; the download itself succeeded.
+        logger.debug('could not open the downloaded file', error);
       }
     } else {
       await downloadFolder(localUri);
