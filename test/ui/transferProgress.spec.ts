@@ -26,8 +26,9 @@ function clock(start = 1_000) {
   };
 }
 
-/** Matches RENDER_INTERVAL_MS in the module under test. */
+/** Both match the constants in the module under test. */
 const RENDER_INTERVAL_MS = 100;
+const QUIET_PERIOD_MS = 2000;
 
 const upload = (name: string, total?: number) => ({ name, verb: 'Uploading', total });
 
@@ -52,13 +53,26 @@ describe('staying out of the way', () => {
     expect(progress.isShowing).toBe(false);
   });
 
+  test('work still running just under the quiet period shows nothing yet', async () => {
+    const time = clock();
+    const progress = new TransferProgress(() => undefined, time.now);
+    const task = {};
+
+    progress.begin(task, upload('big.zip', 10 * 1024 * 1024));
+    time.advance(QUIET_PERIOD_MS - 1);
+    progress.advance(task, 1024);
+    await Promise.resolve();
+
+    expect(openedProgress).toEqual([]);
+  });
+
   test('work still running after the quiet period does show one', async () => {
     const time = clock();
     const progress = new TransferProgress(() => undefined, time.now);
     const task = {};
 
     progress.begin(task, upload('big.zip', 10 * 1024 * 1024));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(task, 1024 * 1024);
     await Promise.resolve();
 
@@ -74,7 +88,7 @@ describe('what it says', () => {
     const task = {};
 
     progress.begin(task, upload('big.zip', 4 * 1024 * 1024));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(task, 1024 * 1024);
     await Promise.resolve();
 
@@ -89,7 +103,7 @@ describe('what it says', () => {
     const task = {};
 
     progress.begin(task, upload('stream.bin'));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(task, 2048);
     await Promise.resolve();
 
@@ -105,7 +119,7 @@ describe('what it says', () => {
     const second = {};
 
     progress.begin(first, upload('one.bin', 1024));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.begin(second, upload('two.bin', 1024));
     progress.advance(first, 512);
     // Chunks arrive over time; the message is throttled, so give it a moment.
@@ -123,7 +137,7 @@ describe('what it says', () => {
     const down = {};
 
     progress.begin(up, { name: 'a', verb: 'Uploading' });
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.begin(down, { name: 'b', verb: 'Downloading' });
     time.advance(RENDER_INTERVAL_MS);
     progress.advance(up, 10);
@@ -140,7 +154,7 @@ describe('what it says', () => {
     const task = {};
 
     progress.begin(task, upload('big.zip', 10_000_000));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(task, 1);
     await Promise.resolve();
     const afterOpening = openedProgress[0].messages.length;
@@ -162,7 +176,7 @@ describe('the counting', () => {
     const second = {};
 
     progress.begin(first, upload('one.bin'));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.begin(second, upload('two.bin'));
     progress.advance(first, 1);
     await Promise.resolve();
@@ -183,7 +197,7 @@ describe('the counting', () => {
 
     const first = {};
     progress.begin(first, upload('one.bin'));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(first, 1);
     await Promise.resolve();
     progress.end(first);
@@ -192,7 +206,7 @@ describe('the counting', () => {
     // the last one ending is exactly the case that used to show nothing.
     const second = {};
     progress.begin(second, upload('two.bin'));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(second, 1);
     await Promise.resolve();
 
@@ -220,7 +234,7 @@ describe('cancelling', () => {
     const task = {};
 
     progress.begin(task, upload('big.zip', 10_000_000));
-    time.advance(800);
+    time.advance(QUIET_PERIOD_MS + 50);
     progress.advance(task, 1);
     await Promise.resolve();
 

@@ -37,8 +37,15 @@ interface Active extends TransferDescription {
   transferred: number;
 }
 
-/** How long work must last before it is worth a notification. */
-const QUIET_PERIOD_MS = 750;
+/**
+ * How long work must last before it is worth a notification.
+ *
+ * Checked when something happens -- a file starts, a chunk arrives, a file
+ * finishes -- rather than on a timer, so a transfer that is merely waiting on
+ * the network produces no events and stays silent until it moves again. The
+ * status bar keeps showing that something is going on either way.
+ */
+const QUIET_PERIOD_MS = 2000;
 
 /** How often the message may be rewritten while bytes stream in. */
 const RENDER_INTERVAL_MS = 100;
