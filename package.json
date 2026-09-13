@@ -2,7 +2,7 @@
   "name": "syncx",
   "displayName": "SyncX – SFTP & FTP Sync",
   "description": "SFTP/FTP sync for VS Code, with change detection that does not re-upload files that did not change.",
-  "version": "1.16.3",
+  "version": "1.0.0",
   "publisher": "kr-ilya",
   "author": "kr-ilya (https://github.com/kr-ilya)",
   "engines": {

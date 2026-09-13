@@ -1,324 +1,167 @@
-# sftp sync extension for VS Code
+# SyncX — SFTP & FTP Sync
 
-New maintained and updated version by [@Natizyskunk](https://github.com/Natizyskunk/) 😀 <!-- and [@satiromarra](https://github.com/satiromarra) --> <br>
-(Forked from the no longer maintained [liximomo's SFTP plugin](https://github.com/liximomo/vscode-sftp.git))
+Keep a local folder and a remote server in step, over SFTP or FTP, from inside VS Code.
 
-- VS Code marketplace : https://marketplace.visualstudio.com/items?itemName=Natizyskunk.sftp <br>
-- VSIX release : https://github.com/Natizyskunk/vscode-sftp/releases/
-
-✳ I would be more than happy to have you participate in one way or another to this project. You can do so by simply following the [templates](https://github.com/Natizyskunk/vscode-sftp/issues/new/choose) when you open a new issue or a new pull request.
-
-## ℹ INFOS - 2025/03/13
-I've tried to keep this extension up-to-date as much as I can and added a lot of new relevant features. Saddly, for the last year and a half I wasn't really able to work on the project because of personal reasons and I'm really not sure if and when I'll be able to get more time to work on it again. So for now consider the [v1.16.3](https://github.com/Natizyskunk/vscode-sftp/releases/tag/v1.16.3) as the latest official stable release available.
-
-## ℹ INFOS - 2023/06/23
-This is the main repository for the SFTP extension since [@liximomo](https://github.com/liximomo) has set his own to deprecated in favor of this one in the VSCode marketplace.
-There are also other forks that are available. Feel free to try them.
-
-A lot of work as been brought to fix bugs, add new features and more than 50 updates have been released with a lot of improvements and stability fixes for almost two years now. 😎
-
-I've been working hard to fix a lot of things and I've updated more than 50 new releases with a lot of improvements and stability fixes and I've brought new features for almost three years now. 
+SyncX is a fork of [Natizyskunk/vscode-sftp](https://github.com/Natizyskunk/vscode-sftp), which is itself a fork of [liximomo/vscode-sftp](https://github.com/liximomo/vscode-sftp). It keeps the same `.vscode/sftp.json` format, so an existing configuration works unchanged, and rebuilds the parts that decide **what** to send and **whether to trust the server you are sending it to**.
 
 ---
 
-VSCode-SFTP enables you to add, edit or delete files within a local directory and have it sync to a remote server directory using different transfer protocols like FTP or SSH. The most basic setup requires only a few lines of configuration with a wide array of specific settings also available to meet the needs of any user. Both powerful and fast, it helps developers save time by allowing the use of a familiar editor and environment.
+## Why this fork exists
 
-- Features
-  - [Browser remote with Remote Explorer](#remote-explorer)
-  - Diff local and remote
-  - Sync directory
-  - Upload/Download
-  - Upload on save
-  - File Watcher
-  - Multiple configurations
-  - Switchable profiles
-  - Temp File support
-- [Commands](https://github.com/Natizyskunk/vscode-sftp/wiki/Commands)
-- [Debug](#debug)
-- [FAQ](#FAQ)
+The thing that prompted it: with `watcher.autoUpload` on, the original re-uploads files that have not changed — sometimes the whole project. The cause is that a single file-system event on a *directory* is treated as "transfer this path", and transferring a directory means walking it and uploading every file underneath, regardless of whether any of them differ.
 
-## Installation
+SyncX treats an event as a reason to **check**, not a reason to send:
 
-### Method 1 (Recommended : Auto update)
-1. Select Extensions (Ctrl + Shift + X).
-2. Uninstall current sftp extension from @liximomo.
-3. Install new extension directly from VS Code Marketplace : https://marketplace.visualstudio.com/items?itemName=Natizyskunk.sftp.
-4. Voilà!
+```
+event → is it ignored? → is it a directory? → did we write it ourselves?
+      → did size/mtime/inode move? → did the content hash move? → upload
+```
 
-### Method 2 (Manual update)
-To install just follow these steps from within VSCode:
-1. Select Extensions (Ctrl + Shift + X).
-2. Uninstall current sftp extension from @liximomo.
-3. Open "More Action" menu(ellipsis on the top) and click "Install from VSIX…".
-4. Locate VSIX file and select.
-5. Reload VSCode.
-6. Voilà!
+Each step can stop the event, and the expensive ones only run when the cheap ones were inconclusive. A `git checkout` between branches now uploads exactly the files that actually differ. Two commands let you see the machinery rather than trust it: **Show Change Detection Diagnostics** (counters per stage) and **Dry Run: Show What Would Be Uploaded** (runs the whole pipeline and sends nothing).
+
+## What else is different
+
+**The server's identity is checked.** The original passes ssh2 neither `hostVerifier` nor `hostHash`, so any host key is accepted silently and the connection is open to a machine-in-the-middle. SyncX verifies it against your real `~/.ssh/known_hosts` (plus `known_hosts2` and the system file), shows the fingerprint in OpenSSH's own `SHA256:…` notation so you can compare it with `ssh-keygen -lf`, and **refuses** when a known host presents a different key — rather than showing a dismissible notification. A host you already accepted in a terminal is not asked about twice.
+
+**Passwords go to VS Code's SecretStorage,** not into the file you commit. They are offered for saving only after they have worked, and there is a *Forget Saved Password* command.
+
+**The first upload to a new destination asks.** A typo in `remotePath` can deploy a project into `/`. Before the first transfer to a path the extension has not used before, it shows you what is actually in that directory and asks once.
+
+**Uploads are atomic by default.** Content goes to a uniquely named staging file and is renamed into place, so a dropped connection leaves the previous version intact instead of a truncated file.
+
+**`concurrency` is a budget for the server,** not for each operation. The original created a scheduler per operation, each with its own budget, so three overlapping uploads with `concurrency: 4` ran twelve transfers at once — which is what trips `MaxSessions` and looks like a flaky network.
+
+**Transfers show bytes and can be stopped.** Long transfers get a notification with a running count and a Cancel button. Short ones stay silent.
+
+**The remote explorer says how each file stands** against your local copy: `M` when it differs, `↓` when there is no local copy, nothing when they match. A file it could not compare says so in the tooltip rather than claiming to be up to date.
+
+**Setup verifies before it writes.** `SyncX: Config` can walk you through a connection, test it, and only then write the file.
+
+**Safety of the workspace itself.** `untrustedWorkspaces` is declared unsupported, and there is no mechanism for running shell commands out of a configuration file. Opening someone else's repository cannot execute anything.
+
+## Install
+
+From the Marketplace: search for **SyncX** in the Extensions view, or
+
+```
+ext install kr-ilya.syncx
+```
+
+From a `.vsix` (each [release](https://github.com/kr-ilya/vscode-sftp/releases) has one attached):
+
+```
+code --install-extension syncx-<version>.vsix
+```
+
+Requires VS Code 1.90 or newer.
+
+### Running it alongside the original
+
+Both can be installed at once — the commands live in separate namespaces (`syncx.*` and `sftp.*`), as do the views and settings. But **both read the same `.vscode/sftp.json`**, so with both enabled in the same workspace a saved file is uploaded twice. Disable one of them per workspace.
+
+## Getting started
+
+1. Open the folder you want to sync.
+2. Run **SyncX: Config** from the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+3. Fill in the connection. The wizard can test it before anything is written; the file lands at `.vscode/sftp.json`.
+4. To pull an existing project down first, run **SyncX: Download Project**.
+5. Edit locally. With `uploadOnSave: true`, saving uploads.
+
+A minimal configuration:
+
+```json
+{
+  "name": "My Server",
+  "host": "example.com",
+  "protocol": "sftp",
+  "port": 22,
+  "username": "deploy",
+  "remotePath": "/srv/www/project",
+  "uploadOnSave": true
+}
+```
+
+Leave `password` out and you will be prompted, with the option to remember it in SecretStorage. The file accepts comments and trailing commas.
+
+To upload on every change rather than on save, add a watcher:
+
+```json
+{
+  "watcher": {
+    "files": "**/*",
+    "autoUpload": true,
+    "autoDelete": false
+  }
+}
+```
+
+`autoDelete` stays off by default: VS Code collapses the deletion of a folder into a single event, so one event can mean a recursive delete on the server.
+
+Several servers for one folder are `profiles`, switched with **SyncX: Set Profile**. A
+profile overrides the top level, including `watcher` and `ignore`:
+
+```json
+{
+  "host": "staging.example.com",
+  "username": "deploy",
+  "remotePath": "/srv/staging",
+  "defaultProfile": "staging",
+  "profiles": {
+    "staging": { "host": "staging.example.com", "remotePath": "/srv/staging" },
+    "production": { "host": "example.com", "remotePath": "/srv/www", "uploadOnSave": false }
+  }
+}
+```
 
 ## Documentation
-- [Home](https://github.com/Natizyskunk/vscode-sftp/wiki)
-- [Settings](https://github.com/Natizyskunk/vscode-sftp/wiki/Setting)
-- [Common configuration](https://github.com/Natizyskunk/vscode-sftp/wiki/Common-Configuration)
-- [SFTP configuration](https://github.com/Natizyskunk/vscode-sftp/wiki/SFTP-only-Configuration)
-- [FTP confriguration](https://github.com/Natizyskunk/vscode-sftp/wiki/FTP(s)-only-Configuration)
-- [Commands](https://github.com/Natizyskunk/vscode-sftp/wiki/Commands)
 
-## Usage
-If the latest files are already on a remote server, you can start with an empty local folder,
-then download your project, and from that point sync.
+- [Commands](docs/commands.md)
+- [Configuration](docs/configuration.md) — every option
+- [Common configuration](docs/common_configuration.md)
+- [SFTP-only options](docs/sftp_configuration.md)
+- [FTP-only options](docs/ftp_configuration.md)
+- [Editor settings](docs/setting.md)
 
-1. In `VS Code`, open a local directory you wish to sync to the remote server (or create an empty directory
-that you wish to first download the contents of a remote server folder in order to edit locally).
-2. `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on Mac open command palette, run `SFTP: config` command.
-3. A basic configuration file will appear named `sftp.json` under the `.vscode` directory, open and edit the configuration parameters with your remote server information.
+## Commands
 
-For instance:
-```json
-{
-    "name": "Profile Name",
-    "host": "name_of_remote_host",
-    "protocol": "ftp",
-    "port": 21,
-    "secure": true,
-    "username": "username",
-    "remotePath": "/public_html/project", // <--- This is the path which will be downloaded if you "Download Project"
-    "password": "password",
-    "uploadOnSave": false
-}
-```
-The password parameter in `sftp.json` is optional, if left out you will be prompted for a password on sync.
-_Note：_ backslashes and other special characters must be escaped with a backslash.
+| Command | What it does |
+| --- | --- |
+| `SyncX: Config` | Create or open the configuration for this folder |
+| `SyncX: Set Profile` | Switch the active profile |
+| `SyncX: Upload Changed Files` | Upload everything changed since the last commit (`Ctrl+Alt+U`) |
+| `SyncX: Upload Active File` / `Folder` / `Project` | Send one file, one folder, or all of it |
+| `SyncX: Download Active File` / `Folder` / `Project` | The same, in reverse |
+| `SyncX: Sync Local -> Remote` | Mirror local onto the server |
+| `SyncX: Sync Remote -> Local` | Mirror the server onto local |
+| `SyncX: Sync Both Directions` | Make the newer copy of each file present in both places |
+| `SyncX: Diff Active File with Remote` | Open a diff against the remote version |
+| `SyncX: Cancel All Transfers` | Stop everything in flight |
+| `SyncX: Open SSH in Terminal` | Open a terminal logged in to the server |
+| `SyncX: Show Change Detection Diagnostics` | Counters: events seen, stopped at each stage, uploaded |
+| `SyncX: Dry Run: Show What Would Be Uploaded` | The full pipeline, transferring nothing |
+| `SyncX: Forget Saved Password` | Remove a password from SecretStorage |
+| `SyncX: Reset Confirmed Upload Destinations` | Ask again before the next upload to each destination |
 
-4. Save and close the `sftp.json` file.
-5. `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on Mac open command palette.
-6. Type `sftp` and you'll now see a number of other commands. You can also access many of the commands from the project's file explorer context menus.
-7. A good one to start with if you want to sync with a remote folder is `SFTP: Download Project`.  This will download the directory shown in the `remotePath` setting in `sftp.json` to your local open directory.
-8. Done - you can now edit locally and after each save it will upload to sync your remote file with the local copy.
-9. Enjoy!
+Most also appear in the file explorer's context menu, where holding `Alt` offers **Force Upload** and **Force Download**, which disregard ignore rules.
 
-For detailed explanations please go to [wiki](https://github.com/Natizyskunk/vscode-sftp/wiki).
+## Diagnostics
 
-## Example configurations
-You can see the full list of configuration options [here](https://github.com/Natizyskunk/vscode-sftp/wiki/configuration).
+Two output channels: **syncx** for operations and errors, and **SyncX: change detection** for the per-event trace of what was uploaded, what was stopped, and why. Set `syncx.debug` to `true` for verbose logging — the level is read when the extension activates, so reload the window after changing it.
 
-- [sftp sync extension for VS Code](#sftp-sync-extension-for-vs-code)
-  - [Installation](#installation)
-    - [Method 1 (Recommended : Auto update)](#method-1-recommended--auto-update)
-    - [Method 2 (Manual update)](#method-2-manual-update)
-  - [Documentation](#documentation)
-  - [Usage](#usage)
-  - [Example configurations](#example-configurations)
-    - [Simple](#simple)
-    - [Profiles](#profiles)
-    - [Multiple Context](#multiple-context)
-    - [Connection Hopping](#connection-hopping)
-      - [Single Hop](#single-hop)
-      - [Multiple Hop](#multiple-hop)
-    - [Configuration in User Setting](#configuration-in-user-setting)
-  - [Remote Explorer](#remote-explorer)
-    - [Multiple Select](#multiple-select)
-    - [Order](#order)
-  - [Debug](#debug)
-  - [FAQ](#faq)
-  - [Donation](#donation)
-    - [Buy Me a Coffee](#buy-me-a-coffee)
-    - [PayPal](#paypal)
+## Known limitations
 
-### Simple
-```json
-{
-  "host": "host",
-  "username": "username",
-  "remotePath": "/remote/workspace"
-}
-```
+- **FTP is passive-only.** The transport is `basic-ftp`, which does not implement active mode, so `passive: false` is warned about and ignored. Active mode needs the server to open a connection back to your machine, which almost no firewall allows.
+- **A cold start assumes the server matches.** With no recorded state — a fresh install, or a new workspace — SyncX records what is on disk and uploads nothing. If local and remote genuinely differ at that moment, the difference stays until you run an explicit sync. Doing nothing is recoverable; uploading a whole project over a live server is not.
+- **Deferred, not implemented:** versioned backups, SSH key generation, drag-and-drop conflict resolution, `su` escalation, and localisation.
 
-### Profiles
-```json
-{
-  "username": "username",
-  "password": "password",
-  "remotePath": "/remote/workspace/a",
-  "watcher": {
-    "files": "dist/*.{js,css}",
-    "autoUpload": false,
-    "autoDelete": false
-  },
-  "profiles": {
-    "dev": {
-      "host": "dev-host",
-      "remotePath": "/dev",
-      "uploadOnSave": true
-    },
-    "prod": {
-      "host": "prod-host",
-      "remotePath": "/prod"
-    }
-  },
-  "defaultProfile": "dev"
-}
-```
+## Credits and licence
 
-_Note：_ `context` and `watcher` are only available at root level.
+MIT, inherited from the work this is built on. The licence carries one condition — *mention and credit all original and precedent work* — which is met here and kept in the licence file:
 
-Use `SFTP: Set Profile` to switch profile.
+- [liximomo](https://github.com/liximomo/vscode-sftp) — the original extension
+- [Natizyskunk](https://github.com/Natizyskunk/vscode-sftp) — maintained it for years afterwards, and is the direct parent of this fork
+- Everyone who contributed to either
 
-### Multiple Context
-The context must **not be same**.
-```json
-[
-  {
-    "name": "server1",
-    "context": "project/build",
-    "host": "host",
-    "username": "username",
-    "password": "password",
-    "remotePath": "/remote/project/build"
-  },
-  {
-    "name": "server2",
-    "context": "project/src",
-    "host": "host",
-    "username": "username",
-    "password": "password",
-    "remotePath": "/remote/project/src"
-  }
-]
-```
+Two other forks were read while planning this one, for ideas rather than code: [philipdaoud/sftp-neo](https://github.com/philipdaoud/sftp-neo) and [e-u-shapovalov/vscode-sftp](https://github.com/e-u-shapovalov/vscode-sftp). Where an approach was taken from one of them, the comment in the source says so.
 
-_Note：_ `name` is required in this mode.
-
-### Connection Hopping
-You can connect to a target server through a proxy with ssh protocol.
-
-_Note：_ Variable substitution is not working in a hop configuration.
-
-#### Single Hop
-local -> hop -> target
-```json
-{
-  "name": "target",
-  "remotePath": "/path/in/target",
-
-  // hop
-  "host": "hopHost",
-  "username": "hopUsername",
-  "privateKeyPath": "/Users/localUser/.ssh/id_rsa", // <-- The key file is assumed on the local.
-
-  "hop": {
-    // target
-    "host": "targetHost",
-    "username": "targetUsername",
-    "privateKeyPath": "/Users/hopUser/.ssh/id_rsa", // <-- The key file is assumed on the hop.
-  }
-}
-```
-
-#### Multiple Hop
-local -> hopa -> hopb -> target
-```json
-{
-  "name": "target",
-  "remotePath": "/path/in/target",
-
-  // hopa
-  "host": "hopAHost",
-  "username": "hopAUsername",
-  "privateKeyPath": "/Users/hopAUsername/.ssh/id_rsa" // <-- The key file is assumed on the local.
-
-  "hop": [
-    // hopb
-    {
-      "host": "hopBHost",
-      "username": "hopBUsername",
-      "privateKeyPath": "/Users/hopaUser/.ssh/id_rsa" // <-- The key file is assumed on the hopa.
-    },
-
-    // target
-    {
-      "host": "targetHost",
-      "username": "targetUsername",
-      "privateKeyPath": "/Users/hopbUser/.ssh/id_rsa", // <-- The key file is assumed on the hopb.
-    }
-  ]
-}
-```
-
-### Configuration in User Setting
-You can use `remote` to tell sftp to get the configuration from [remote-fs](https://github.com/liximomo/vscode-remote-fs).
-
-In User Setting:
-```json
-"remotefs.remote": {
-  "dev": {
-    "scheme": "sftp",
-    "host": "host",
-    "username": "username",
-    "rootPath": "/path/to/somewhere"
-  },
-  "projectX": {
-    "scheme": "sftp",
-    "host": "host",
-    "username": "username",
-    "privateKeyPath": "/Users/xx/.ssh/id_rsa",
-    "rootPath": "/home/foo/some/projectx"
-  }
-}
-```
-
-In sftp.json:
-```json
-{
-  "remote": "dev",
-  "remotePath": "/home/xx/",
-  "uploadOnSave": false,
-  "ignore": [".vscode", ".git", ".DS_Store"]
-}
-```
-
-## Remote Explorer
-![remote-explorer-preview](https://raw.githubusercontent.com/Natizyskunk/vscode-sftp/master/assets/showcase/remote-explorer.png)
-
-Remote Explorer lets you explore files in remote. You can open Remote Explorer by:
-
-1. Run Command `View: Show SFTP`.
-2. Click SFTP view in Activity Bar.
-
-You can only view a files content with Remote Explorer. Run command `SFTP: Edit in Local` to edit it in local.
-
-### Multiple Select
-You are able to select multiple files/folders at once on the remote server to download and upload. You can do it simply by holding down Ctrl or Shift while selecting all desired files, just like on the regular explorer view.
-
-_Note：_ You need to manually refresh the parent folder after you **delete** a file if the explorer isn't correctly updated.
-
-### Order
-You can order the remote Explorer by adding the `remoteExplorer.order` parameter inside your `sftp.json` config file.
-
-In sftp.json:
-```json
-{
-  "remoteExplorer": {
-    "order": 1 // <-- Default value is 0.
-  }
-}
-```
-
-## Debug
-1. Open User Settings.
-  - On Windows/Linux - `File > Preferences > Settings`
-  - On macOS - `Code > Preferences > Settings`
-2. Set `sftp.debug` to `true` and reload vscode.
-3. View the logs in `View > Output > sftp`.
-
-## FAQ
-You can see all the Frequently Asked Questions [here](./FAQ.md).
-
-## Donation
-If this project helped you reduce development time and you wish to contribute financially
-
-### Buy Me a Coffee
-[![Buy Me A Coffee](https://bmc-cdn.nyc3.digitaloceanspaces.com/BMC-button-images/custom_images/orange_img.png)](https://www.buymeacoffee.com/Natizyskunk)
-
-### PayPal
-<!-- [![PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=BY89QD47D7MPS&source=url) -->
-[![PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?business=DELD7APHHM3BC&no_recurring=0&currency_code=EUR)
-[![PayPal Me](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://paypal.me/natanfourie)
+Issues and pull requests: <https://github.com/kr-ilya/vscode-sftp/issues>

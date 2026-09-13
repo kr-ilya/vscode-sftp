@@ -100,6 +100,13 @@ jobs:
     # Entra ID federated credential and the AZURE_* variables below.
     if: vars.PUBLISH_MARKETPLACE == 'true'
     runs-on: ubuntu-latest
+    # Declaring an environment changes the subject of the OIDC token to
+    # `repo:OWNER/REPO:environment:release`, whatever triggered the run. Without
+    # it a tag build presents `...:ref:refs/tags/v1.2.3`, and an Entra ID
+    # federated credential matches its subject exactly -- so one credential
+    # would cover exactly one tag. It is also where a required reviewer goes, if
+    # you want publishing to pause for a nod.
+    environment: release
     permissions:
       contents: read
       id-token: write # required for OIDC federation; no secret is stored
@@ -126,6 +133,9 @@ jobs:
     # Set repository variable PUBLISH_OPENVSX=true and secret OVSX_PAT to enable.
     if: vars.PUBLISH_OPENVSX == 'true'
     runs-on: ubuntu-latest
+    # Same environment as the Marketplace job, so both publications are gated
+    # together and OVSX_PAT can be scoped to it.
+    environment: release
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

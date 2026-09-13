@@ -1,7 +1,7 @@
 # VSCode-SFTP
 
 Configurations are stored in your project working directory under `../.vscode/sftp.json`. <br>
-The configuration file can always be accessed with `CTRL` + `Shift` + `P`, and searching for `SFTP: Config`.
+The configuration file can always be accessed with `CTRL` + `Shift` + `P`, and searching for `SyncX: Config`.
 
 ![image](https://github.com/user-attachments/assets/5ceff350-7678-4264-98d4-2741a98a9dbe)
 

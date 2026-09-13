@@ -1,71 +1,117 @@
-## Common commands
+# Commands
 
-### SFTP: Config
-Create a new configuration file for a project.
+Everything here is in the command palette under **SyncX**, unless it says otherwise.
 
-### SFTP: Set Profile
-Set the current profile.
-           
-#### KeyBindings Args
-func(profileName: string)
+## Configuration
 
-### SFTP: Upload Active File
-Upload the current file.
+### SyncX: Config
+Create a configuration for this folder, or open the one that exists. Offers to collect the
+connection details, test them, and store the password in SecretStorage before writing
+`.vscode/sftp.json`.
 
-### SFTP: Upload Changed Files
-Upload all files changed or created since the last commit to your Git.
-Can be called by default keyboard shortcut `Ctrl+Alt+U`.
+### SyncX: Set Profile
+Switch the active profile (see the example in the [README](../README.md#getting-started)).
+The watcher restarts with that profile's settings.
 
-### SFTP: Upload Active Folder
-Upload the entire folder the current file is located in.
+**Keybinding argument:** `func(profileName: string)`
 
-### SFTP: Download Active File
-Download the remote version of the current file and overwrite the local copy.
+## Uploading
 
-### SFTP: Download Active Folder
-Download the entire folder the current file is located in.
+### SyncX: Upload Changed Files
+Upload everything changed or created since the last commit, using git's own view of the
+working tree. Bound to `Ctrl+Alt+U` by default. Renames are sent as a rename on the server;
+deletions are deleted.
 
-### SFTP: Sync Local -> Remote
-1. Any files that exist on both local and remote that have a different timestamp between local and remote are copied over.
-2. Any files that only exist on the local are copied over.
+### SyncX: Upload Active File
+Upload the file in the active editor.
 
-You can change the default behavior by [syncOption](https://github.com/Natizyskunk/vscode-sftp/wiki/Configuration#syncoption).
+### SyncX: Upload Active Folder
+Upload the folder the active file is in.
 
-### SFTP: Sync Remote -> Local
-Same as `Sync Local -> Remote`, but in the opposite direction.
+### SyncX: Upload Project
+Upload everything under `remotePath`.
 
-### SFTP: Sync Both Directions
-Compare file modification times, and will always perform the action that causes the newest file to be present in both locations.
+### SyncX: Upload Active File / Folder / Project To All Profiles
+The same, repeated for every profile in the configuration. Asks for confirmation first.
 
-*Only [skipCreate](https://github.com/Natizyskunk/vscode-sftp/wiki/Configuration#syncoptionskipcreate) and [ignoreExisting](https://github.com/Natizyskunk/vscode-sftp/wiki/Configuration#syncoptionignoreexisting) are valid for this command.*
+## Downloading
 
-### SFTP: List Active Folder
-List the folder the current file is located in.
+### SyncX: Download Active File
+Download the remote version of the active file, overwriting the local copy.
 
-### sftp.upload
-Upload file or folders.
+### SyncX: Download Active Folder
+Download the folder the active file is in.
 
-#### KeyBindings Args
-func(fspaths: string[])
+### SyncX: Download Project
+Download everything under `remotePath`. This is the usual way to start from an empty
+local folder.
 
-### sftp.download
-Download file or folders.
+## Synchronising
 
-#### KeyBindings Args
-func(fspaths: string[])
+### SyncX: Sync Local -> Remote
+1. Files that exist on both sides with different timestamps are copied over.
+2. Files that exist only locally are copied over.
 
-### SFTP: Cancel All Transfers
-Stop the current transfers (upload and download).
+Adjust with [`syncOption`](configuration.md#syncoption).
 
-### SFTP: Open SSH in Terminal
-Open a terminal in VSCode and auto login to a specific server.
+### SyncX: Sync Remote -> Local
+The same, in the other direction.
 
+### SyncX: Sync Both Directions
+Compares modification times and makes the newer copy of each file present in both places.
 
-## Alt commands
-An alternative command can be found when pressing `Alt` while opening a menu.
+Only [`skipCreate`](configuration.md#syncoptionskipcreate) and
+[`ignoreExisting`](configuration.md#syncoptionignoreexisting) apply to this one.
 
-### Force Download
-Download file but disregard ignore rules.
+## Looking at the server
 
-### Force Upload
-Upload file but disregard ignore rules.
+### SyncX: List / List Active Folder / List All
+List a remote folder and open what you pick.
+
+### SyncX: Diff Active File with Remote
+Open a diff between the active file and its remote version.
+
+### SyncX: Refresh Active Remote File
+Re-read the file the active editor is showing from the remote explorer.
+
+### SyncX: Open SSH in Terminal
+Open a terminal logged in to the configured server.
+
+## Transfers
+
+### SyncX: Cancel All Transfers
+Stop everything in flight, queued transfers included.
+
+## Change detection
+
+### SyncX: Show Change Detection Diagnostics
+Counters for the current session: events received, how many were stopped at each stage of
+the gate, and how many were uploaded. The first thing to look at when the watcher is doing
+more or less than expected.
+
+### SyncX: Dry Run: Show What Would Be Uploaded
+Run the whole tree through the same gate the watcher uses and print the decisions.
+Transfers nothing.
+
+## Credentials and destinations
+
+### SyncX: Forget Saved Password
+Remove a remembered password from SecretStorage.
+
+### SyncX: Reset Confirmed Upload Destinations
+Forget which destinations have been confirmed, so the next upload to each asks again.
+
+## Context menu only
+
+These appear on files and folders in the explorer and in the remote explorer, not in the
+palette:
+
+**Upload File**, **Upload Folder**, **Download File**, **Download Folder**,
+**Diff with Remote**, **Delete**, **Create File**, **Create Folder**,
+**Reveal in Explorer**, **Reveal in Remote Explorer**, **Edit in Local**, **View Content**,
+**Refresh**.
+
+Holding `Alt` while the menu opens swaps two of them:
+
+- **Force Upload** — upload, disregarding ignore rules.
+- **Force Download** — download, disregarding ignore rules.
