@@ -6,7 +6,7 @@ import { vol } from 'memfs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sync, TransferDirection } from '../transfer';
-import localFs from '../../../core/localFs';
+import MemfsLocalFileSystem from '../../../../test/helper/memfsLocalFs';
 import TransferTask from '../../../core/transferTask';
 import RemoteFs from '../../../../test/helper/localRemoteFs';
 
@@ -19,6 +19,13 @@ declare global {
 Array.prototype.formatSep = function() {
   return this.map(str => str.replace(/\//g, path.sep))
 }
+
+/**
+ * Everything here runs against memfs, so the file system under test has to be
+ * one that goes through `fs` -- see test/helper/memfsLocalFs.ts for why the
+ * production singleton cannot.
+ */
+const localFs = new MemfsLocalFileSystem(path);
 
 function createRemoteFs({ remoteTimeOffsetInHours = 0 } = {}) {
   return new RemoteFs(path, {
