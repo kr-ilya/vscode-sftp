@@ -1,75 +1,76 @@
 # SyncX — SFTP & FTP Sync
 
-Keep a local folder and a remote server in step, over SFTP or FTP, from inside VS Code.
+**Keep a local folder and a remote server in step, from inside VS Code.**
+Upload on save, mirror in either direction, browse the server in a tree, diff against it — over SFTP, FTP/FTPS, or a local path.
 
-SyncX is a fork of [Natizyskunk/vscode-sftp](https://github.com/Natizyskunk/vscode-sftp), which is itself a fork of [liximomo/vscode-sftp](https://github.com/liximomo/vscode-sftp). It keeps the same `.vscode/sftp.json` format, so an existing configuration works unchanged, and rebuilds the parts that decide **what** to send and **whether to trust the server you are sending it to**.
+A fork of [Natizyskunk/vscode-sftp](https://github.com/Natizyskunk/vscode-sftp) (itself a fork of [liximomo/vscode-sftp](https://github.com/liximomo/vscode-sftp)). Same `.vscode/sftp.json`, so an existing configuration works unchanged.
 
 ---
 
-## Why this fork exists
+## What it does
 
-The thing that prompted it: with `watcher.autoUpload` on, the original re-uploads files that have not changed — sometimes the whole project. The cause is that a single file-system event on a *directory* is treated as "transfer this path", and transferring a directory means walking it and uploading every file underneath, regardless of whether any of them differ.
+| | |
+| --- | --- |
+| **Transfer** | Upload or download a file, a folder, or the whole project. SFTP, FTP, FTPS, or a path on this machine. |
+| **On save** | `uploadOnSave` sends the file you just saved. `downloadOnOpen` fetches it when you open one. |
+| **On change** | A watcher can upload as files change, and optionally mirror deletions. |
+| **Sync** | Local → remote, remote → local, or both directions, with rules for what to skip, update or delete. |
+| **From git** | Upload everything changed since the last commit, renames and deletions included (`Ctrl+Alt+U`). |
+| **Remote explorer** | Browse the server in its own tree view, open files from it, and see which ones differ from your copy. |
+| **Diff** | Compare the file in the editor with the version on the server. |
+| **Profiles** | Several servers for one folder — staging, production — switched from the palette. |
+| **Multiple roots** | A different server per workspace folder, and per subtree within one. |
+| **Hopping** | Reach a server through one or more jump hosts. |
+| **Ignore rules** | Glob patterns inline or from a file, applied before anything is queued. |
+| **Auth** | Password, private key, `ssh-agent`, keyboard-interactive. Settings from `~/.ssh/config` are picked up. |
 
-SyncX treats an event as a reason to **check**, not a reason to send:
+## How it differs from the fork it came from
 
-```
-event → is it ignored? → is it a directory? → did we write it ourselves?
-      → did size/mtime/inode move? → did the content hash move? → upload
-```
+| | Original | SyncX |
+| --- | --- | --- |
+| **What triggers an upload** | Any file-system event — including one on a *directory*, which re-uploads everything underneath it | An event starts a check. Ignored → directory → our own write → size/mtime/inode → content hash. A `git checkout` uploads only what actually differs |
+| **Server identity** | Any host key accepted silently; no man-in-the-middle protection at all | Verified against your `~/.ssh/known_hosts`; fingerprint shown as OpenSSH prints it; a changed key is **refused** |
+| **Passwords** | In the file you commit | VS Code's SecretStorage, saved only after they have worked |
+| **Wrong `remotePath`** | Deploys into whatever the typo points at | The first upload to a new destination shows what is already there and asks once |
+| **Interrupted upload** | Target truncated at the start, so a dropped connection loses both versions | Written to a staging file and renamed into place |
+| **`concurrency: 4`** | Four transfers *per operation* — three at once meant twelve | Four for the server, whatever is running |
+| **During a transfer** | A spinner | Bytes moved, and a Cancel button |
+| **Remote explorer** | File names | File names, marked against your local copy |
+| **New configuration** | Written immediately; you find out it is wrong on the first upload | Offered as a wizard that connects first |
+| **Untrusted workspace** | Not declared | Declared unsupported; nothing runs shell commands out of a config file |
 
-Each step can stop the event, and the expensive ones only run when the cheap ones were inconclusive. A `git checkout` between branches now uploads exactly the files that actually differ. Two commands let you see the machinery rather than trust it: **Show Change Detection Diagnostics** (counters per stage) and **Dry Run: Show What Would Be Uploaded** (runs the whole pipeline and sends nothing).
-
-## What else is different
-
-**The server's identity is checked.** The original passes ssh2 neither `hostVerifier` nor `hostHash`, so any host key is accepted silently and the connection is open to a machine-in-the-middle. SyncX verifies it against your real `~/.ssh/known_hosts` (plus `known_hosts2` and the system file), shows the fingerprint in OpenSSH's own `SHA256:…` notation so you can compare it with `ssh-keygen -lf`, and **refuses** when a known host presents a different key — rather than showing a dismissible notification. A host you already accepted in a terminal is not asked about twice.
-
-**Passwords go to VS Code's SecretStorage,** not into the file you commit. They are offered for saving only after they have worked, and there is a *Forget Saved Password* command.
-
-**The first upload to a new destination asks.** A typo in `remotePath` can deploy a project into `/`. Before the first transfer to a path the extension has not used before, it shows you what is actually in that directory and asks once.
-
-**Uploads are atomic by default.** Content goes to a uniquely named staging file and is renamed into place, so a dropped connection leaves the previous version intact instead of a truncated file.
-
-**`concurrency` is a budget for the server,** not for each operation. The original created a scheduler per operation, each with its own budget, so three overlapping uploads with `concurrency: 4` ran twelve transfers at once — which is what trips `MaxSessions` and looks like a flaky network.
-
-**Transfers show bytes and can be stopped.** Long transfers get a notification with a running count and a Cancel button. Short ones stay silent.
-
-**The remote explorer says how each file stands** against your local copy: `M` when it differs, `↓` when there is no local copy, nothing when they match. A file it could not compare says so in the tooltip rather than claiming to be up to date.
-
-**Setup verifies before it writes.** `SyncX: Config` can walk you through a connection, test it, and only then write the file.
-
-**Safety of the workspace itself.** `untrustedWorkspaces` is declared unsupported, and there is no mechanism for running shell commands out of a configuration file. Opening someone else's repository cannot execute anything.
+Ten defects were fixed along the way — among them SSH connections failing outright, an SFTP upload that could hang forever, rename never working, and `sync --delete` reporting success without deleting anything. The [changelog](CHANGELOG.md) lists them.
 
 ## Install
 
-From the Marketplace: search for **SyncX** in the Extensions view, or
+**From the Marketplace** — search for *SyncX* in the Extensions view, or:
 
 ```
 ext install kr-ilya.syncx
 ```
 
-From a `.vsix` (each [release](https://github.com/kr-ilya/vscode-sftp/releases) has one attached):
+**From a file** — every [release](https://github.com/kr-ilya/vscode-sftp/releases) has a `.vsix` attached:
 
 ```
-code --install-extension syncx-<version>.vsix
+code --install-extension syncx-1.0.0.vsix
 ```
 
-Requires VS Code 1.90 or newer.
+Needs VS Code **1.90** or newer.
 
-### Running it alongside the original
+> **Installing both?**
+> SyncX and the original can be installed together — separate commands, views and settings — but **both read the same `.vscode/sftp.json`**. With both enabled in one workspace, every save uploads twice. Disable one of them per workspace.
 
-Both can be installed at once — the commands live in separate namespaces (`syncx.*` and `sftp.*`), as do the views and settings. But **both read the same `.vscode/sftp.json`**, so with both enabled in the same workspace a saved file is uploaded twice. Disable one of them per workspace.
-
-## Getting started
+## Quick start
 
 1. Open the folder you want to sync.
-2. Run **SyncX: Config** from the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-3. Fill in the connection. The wizard can test it before anything is written; the file lands at `.vscode/sftp.json`.
-4. To pull an existing project down first, run **SyncX: Download Project**.
-5. Edit locally. With `uploadOnSave: true`, saving uploads.
+2. Run **SyncX: Config** (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+3. Fill in the connection — the wizard can test it before writing anything.
+4. Already have files on the server? **SyncX: Download Project** first.
+5. Edit. With `uploadOnSave`, saving sends the file.
 
-A minimal configuration:
+The file lands at `.vscode/sftp.json` and accepts comments and trailing commas:
 
-```json
+```jsonc
 {
   "name": "My Server",
   "host": "example.com",
@@ -81,11 +82,12 @@ A minimal configuration:
 }
 ```
 
-Leave `password` out and you will be prompted, with the option to remember it in SecretStorage. The file accepts comments and trailing commas.
+Leave `password` out and you are asked for it, with the option to remember it in SecretStorage.
 
-To upload on every change rather than on save, add a watcher:
+<details>
+<summary><b>Upload as files change, not only on save</b></summary>
 
-```json
+```jsonc
 {
   "watcher": {
     "files": "**/*",
@@ -95,12 +97,14 @@ To upload on every change rather than on save, add a watcher:
 }
 ```
 
-`autoDelete` stays off by default: VS Code collapses the deletion of a folder into a single event, so one event can mean a recursive delete on the server.
+`autoDelete` is off by default: VS Code collapses the deletion of a folder into one event, so a single event can mean a recursive delete on the server.
 
-Several servers for one folder are `profiles`, switched with **SyncX: Set Profile**. A
-profile overrides the top level, including `watcher` and `ignore`:
+</details>
 
-```json
+<details>
+<summary><b>Several servers for one folder</b></summary>
+
+```jsonc
 {
   "host": "staging.example.com",
   "username": "deploy",
@@ -113,55 +117,78 @@ profile overrides the top level, including `watcher` and `ignore`:
 }
 ```
 
-## Documentation
+Switch with **SyncX: Set Profile**. A profile overrides the top level, `watcher` and `ignore` included.
 
-- [Commands](docs/commands.md)
-- [Configuration](docs/configuration.md) — every option
-- [Common configuration](docs/common_configuration.md)
-- [SFTP-only options](docs/sftp_configuration.md)
-- [FTP-only options](docs/ftp_configuration.md)
-- [Editor settings](docs/setting.md)
+</details>
+
+<details>
+<summary><b>Connect with a key, or through a jump host</b></summary>
+
+```jsonc
+{
+  "host": "example.com",
+  "username": "deploy",
+  "remotePath": "/srv/www",
+  "privateKeyPath": "~/.ssh/id_ed25519",
+  "passphrase": true,
+
+  "hop": [
+    { "host": "bastion.example.com", "username": "jump", "privateKeyPath": "~/.ssh/id_ed25519" }
+  ]
+}
+```
+
+`"passphrase": true` asks for it instead of storing it. Matching entries in `~/.ssh/config` are applied for anything left unset.
+
+</details>
 
 ## Commands
 
-| Command | What it does |
+| Command | |
 | --- | --- |
-| `SyncX: Config` | Create or open the configuration for this folder |
-| `SyncX: Set Profile` | Switch the active profile |
-| `SyncX: Upload Changed Files` | Upload everything changed since the last commit (`Ctrl+Alt+U`) |
-| `SyncX: Upload Active File` / `Folder` / `Project` | Send one file, one folder, or all of it |
-| `SyncX: Download Active File` / `Folder` / `Project` | The same, in reverse |
-| `SyncX: Sync Local -> Remote` | Mirror local onto the server |
-| `SyncX: Sync Remote -> Local` | Mirror the server onto local |
-| `SyncX: Sync Both Directions` | Make the newer copy of each file present in both places |
-| `SyncX: Diff Active File with Remote` | Open a diff against the remote version |
-| `SyncX: Cancel All Transfers` | Stop everything in flight |
-| `SyncX: Open SSH in Terminal` | Open a terminal logged in to the server |
-| `SyncX: Show Change Detection Diagnostics` | Counters: events seen, stopped at each stage, uploaded |
-| `SyncX: Dry Run: Show What Would Be Uploaded` | The full pipeline, transferring nothing |
-| `SyncX: Forget Saved Password` | Remove a password from SecretStorage |
-| `SyncX: Reset Confirmed Upload Destinations` | Ask again before the next upload to each destination |
+| **Config** | Create or open the configuration for this folder |
+| **Set Profile** | Switch the active profile |
+| **Upload Changed Files** | Everything changed since the last commit — `Ctrl+Alt+U` |
+| **Upload / Download Active File · Folder · Project** | One file, one folder, or all of it |
+| **Sync Local → Remote · Remote → Local · Both Directions** | Mirror one side onto the other |
+| **Diff Active File with Remote** | Compare with the version on the server |
+| **List · List Active Folder · List All** | Pick a remote file and open it |
+| **Open SSH in Terminal** | A terminal already logged in |
+| **Cancel All Transfers** | Stop everything, queued transfers included |
+| **Show Change Detection Diagnostics** | Events seen, stopped at each stage, uploaded |
+| **Dry Run: Show What Would Be Uploaded** | The whole pipeline, transferring nothing |
+| **Forget Saved Password** | Drop a password from SecretStorage |
+| **Reset Confirmed Upload Destinations** | Ask again before the next upload to each |
 
-Most also appear in the file explorer's context menu, where holding `Alt` offers **Force Upload** and **Force Download**, which disregard ignore rules.
+All are prefixed **SyncX:** in the palette. Most also sit in the explorer's context menu, where holding `Alt` swaps Upload and Download for **Force Upload** and **Force Download**, which disregard ignore rules.
 
-## Diagnostics
+## Documentation
 
-Two output channels: **syncx** for operations and errors, and **SyncX: change detection** for the per-event trace of what was uploaded, what was stopped, and why. Set `syncx.debug` to `true` for verbose logging — the level is read when the extension activates, so reload the window after changing it.
+[Commands](docs/commands.md) · [Configuration](docs/configuration.md) · [Common options](docs/common_configuration.md) · [SFTP options](docs/sftp_configuration.md) · [FTP options](docs/ftp_configuration.md) · [Editor settings](docs/setting.md)
 
-## Known limitations
+## When something looks wrong
 
-- **FTP is passive-only.** The transport is `basic-ftp`, which does not implement active mode, so `passive: false` is warned about and ignored. Active mode needs the server to open a connection back to your machine, which almost no firewall allows.
-- **A cold start assumes the server matches.** With no recorded state — a fresh install, or a new workspace — SyncX records what is on disk and uploads nothing. If local and remote genuinely differ at that moment, the difference stays until you run an explicit sync. Doing nothing is recoverable; uploading a whole project over a live server is not.
-- **Deferred, not implemented:** versioned backups, SSH key generation, drag-and-drop conflict resolution, `su` escalation, and localisation.
+Two output channels:
 
-## Credits and licence
+- **syncx** — operations and errors.
+- **SyncX: change detection** — one line per event: what was uploaded, what was stopped, and why.
 
-MIT, inherited from the work this is built on. The licence carries one condition — *mention and credit all original and precedent work* — which is met here and kept in the licence file:
+`SyncX: Show Change Detection Diagnostics` gives the counters, and `Dry Run` shows what *would* be sent without sending it — between them, "why did it upload that" is answerable rather than guessable. Set `syncx.debug` for verbose logging; the level is read at activation, so reload the window after changing it.
 
-- [liximomo](https://github.com/liximomo/vscode-sftp) — the original extension
-- [Natizyskunk](https://github.com/Natizyskunk/vscode-sftp) — maintained it for years afterwards, and is the direct parent of this fork
-- Everyone who contributed to either
+## Limitations
 
-Two other forks were read while planning this one, for ideas rather than code: [philipdaoud/sftp-neo](https://github.com/philipdaoud/sftp-neo) and [e-u-shapovalov/vscode-sftp](https://github.com/e-u-shapovalov/vscode-sftp). Where an approach was taken from one of them, the comment in the source says so.
+- **FTP is passive-only.** The transport is `basic-ftp`, which has no active mode, so `passive: false` is warned about and ignored. Active mode needs the server to connect back to your machine, which almost no firewall allows.
+- **A first run assumes the server matches.** With nothing recorded yet, SyncX notes what is on disk and uploads nothing. A genuine difference waits for an explicit sync — doing nothing is recoverable, overwriting a live server is not.
+- **Not implemented:** versioned backups, SSH key generation, drag-and-drop conflict resolution, `su` escalation, localisation.
+
+## Credits
+
+MIT, inherited. The licence carries one condition — *mention and credit all original and precedent work* — which is why this section exists and stays:
+
+- **[liximomo](https://github.com/liximomo/vscode-sftp)** — wrote the original extension.
+- **[Natizyskunk](https://github.com/Natizyskunk/vscode-sftp)** — maintained it for years, and is the direct parent of this fork.
+- Everyone who contributed to either.
+
+Two further forks were read while planning this one, for ideas rather than code: [philipdaoud/sftp-neo](https://github.com/philipdaoud/sftp-neo) and [e-u-shapovalov/vscode-sftp](https://github.com/e-u-shapovalov/vscode-sftp). Where an approach came from one of them, the comment in the source says so.
 
 Issues and pull requests: <https://github.com/kr-ilya/vscode-sftp/issues>
