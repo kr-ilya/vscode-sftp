@@ -54,7 +54,7 @@ ext install kr-ilya.syncx
 **Из файла** — к каждому [релизу](https://github.com/kr-ilya/vscode-sftp/releases) приложен `.vsix`:
 
 ```
-code --install-extension syncx-1.0.0.vsix
+code --install-extension syncx-<version>.vsix
 ```
 
 Нужен VS Code **1.90** или новее.

@@ -2,7 +2,7 @@
   "name": "syncx",
   "displayName": "SyncX – SFTP & FTP Sync",
   "description": "SFTP/FTP sync for VS Code, with change detection that does not re-upload files that did not change.",
-  "version": "1.0.0",
+  "version": "26.9.0",
   "publisher": "kr-ilya",
   "author": "kr-ilya (https://github.com/kr-ilya)",
   "engines": {
@@ -727,6 +727,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "package": "vsce package",
+    "version:next": "node scripts/next-version.mjs",
     "smoke": "node scripts/smoke.mjs",
     "gen:schema": "node scripts/gen-schema.mjs",
     "gen:schema:check": "node scripts/gen-schema.mjs --check",

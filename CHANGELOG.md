@@ -1,6 +1,11 @@
 # Changelog
 
-## 1.0.0 — 2026-09-14
+Versions are `YY.M.N`: the year, the month, and which release that month it is.
+`26.9.0` is the first of September 2026, `26.9.1` the next, `26.10.0` the first
+of October. The month is never zero-padded -- `26.09.0` is not a valid version
+and cannot be published.
+
+## 26.9.0 — 2026-09-15
 
 First release of **SyncX**, forked from [Natizyskunk/vscode-sftp 1.16.3](https://github.com/Natizyskunk/vscode-sftp). Everything below is a difference from that version.
 

@@ -54,7 +54,7 @@ ext install kr-ilya.syncx
 **From a file** — every [release](https://github.com/kr-ilya/vscode-sftp/releases) has a `.vsix` attached:
 
 ```
-code --install-extension syncx-1.0.0.vsix
+code --install-extension syncx-<version>.vsix
 ```
 
 Needs VS Code **1.90** or newer.
