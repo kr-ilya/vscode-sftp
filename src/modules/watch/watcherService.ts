@@ -7,13 +7,14 @@ import { createEventBatcher, type PendingEvent } from '../../core/watch/batch';
 import { createExpectationRegistry } from '../../core/watch/expectations';
 import { readFacts, readDigest, readFileState } from '../../core/watch/facts';
 import { processBatch, recordSynced, forget } from '../../core/watch/pipeline';
+import { executeOutcomes } from '../../core/watch/execute';
 import { recordFrom, type StateRecord } from '../../core/watch/state';
 import { createCounters, formatTrace, type WatchCounters } from '../../core/watch/diagnostics';
 import { defaultWatchPolicy } from '../../core/watch/policy';
 import { loadPersistentState, type PersistentState } from './stateStore';
 import { getWatchOutput } from './output';
 import { walkFiles } from './walk';
-import { fileDepth, isSubpathOf } from '../../core/util/paths';
+import { isSubpathOf } from '../../core/util/paths';
 
 /**
  * The editor-facing half of change detection.
@@ -138,48 +139,25 @@ async function createTree(
     }
     persistent.markDirty();
 
-    // Order matters in two directions at once, so sort rather than hope:
-    // directories shallowest-first (a parent before anything inside it), then
-    // uploads, then deletions deepest-first (children before the directory
-    // that holds them).
-    const rank = { 'ensure-directory': 0, upload: 1, 'delete-remote': 2 } as const;
-    const ordered = [...outcomes].sort((a, b) => {
-      const byAction =
-        rank[a.decision.action as keyof typeof rank] -
-        rank[b.decision.action as keyof typeof rank];
-      if (byAction !== 0) return byAction;
-      return a.decision.action === 'delete-remote'
-        ? fileDepth(b.path) - fileDepth(a.path)
-        : fileDepth(a.path) - fileDepth(b.path);
-    });
-
-    for (const outcome of ordered) {
-      const uri = vscode.Uri.file(outcome.path);
-      try {
+    await executeOutcomes(outcomes, {
+      concurrency: watcherConcurrency,
+      ensureDirectory: path => createRemoteFolder(vscode.Uri.file(path)),
+      upload: path => upload(vscode.Uri.file(path)),
+      remove: path => removeRemote(vscode.Uri.file(path)),
+      async onApplied(outcome) {
         if (outcome.decision.action === 'delete-remote') {
-          await removeRemote(uri);
           forget(outcome.key, persistent.store);
-        } else if (outcome.decision.action === 'ensure-directory') {
-          // Creates the directory and nothing else. Deliberately not upload(),
-          // which walks a directory and re-sends every descendant -- the exact
-          // behaviour this rewrite exists to remove. The children have their
-          // own events and go through the gate on their own merits.
-          try {
-            await createRemoteFolder(uri);
-          } catch {
-            // Already there, which is the normal case.
-          }
-        } else {
-          await upload(uri);
+        } else if (outcome.decision.action === 'upload') {
           await recordSynced(outcome.key, outcome.path, deps);
         }
-      } catch (error) {
+      },
+      onFailed(error, outcome) {
         // Deliberately no state record on failure: the file stays "not known to
         // match", so the next event tries again instead of assuming success.
-        logger.error(error, `[watch] ${outcome.decision.action} ${outcome.path}`);
-      }
-      persistent.markDirty();
-    }
+        logger.error(error as Error, `[watch] ${outcome.decision.action} ${outcome.path}`);
+      },
+      onSettled: () => persistent.markDirty(),
+    });
   }
 
   const watcher = vscode.workspace.createFileSystemWatcher(

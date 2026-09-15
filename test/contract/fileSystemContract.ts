@@ -102,6 +102,17 @@ export function runFileSystemContract(
       expect(names).toEqual(['one.txt', 'two.txt']);
     }, timeoutMs);
 
+    test('ensureDir of the same new chain from several callers at once', async () => {
+      // Uploads run in parallel, and each one ensures its own directory before
+      // writing, so several transfers into one new folder walk the same chain
+      // at the same time. On SFTP the loser of that race used to get a bare
+      // "failure" from a directory that by then existed, and the upload failed.
+      const chain = join(root, 'concurrent', 'a', 'b');
+      await Promise.all(Array.from({ length: 8 }, () => fs.ensureDir(chain)));
+
+      expect((await fs.lstat(chain)).type).toBe(FileType.Directory);
+    }, timeoutMs);
+
     test('list of an empty directory is empty, not an error', async () => {
       const dir = join(root, 'empty');
       await fs.ensureDir(dir);

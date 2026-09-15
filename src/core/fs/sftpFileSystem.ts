@@ -272,6 +272,20 @@ export default class SFTPFileSystem extends RemoteFileSystem {
     });
   }
 
+  /**
+   * Treats "it is already a directory" as success, and anything else as the
+   * failure that was originally reported.
+   */
+  private async _acceptExistingDirectory(dir: string, original: unknown): Promise<void> {
+    try {
+      const stat = await this.lstat(dir);
+      if (stat.type !== FileType.Directory) throw original;
+    } catch {
+      // A failed stat is stranger than the original error; report that one.
+      throw original;
+    }
+  }
+
   async ensureDir(dir: string): Promise<void> {
     // test is root path
     // win: c:/, c://, c:\, c:\\
@@ -294,22 +308,22 @@ export default class SFTPFileSystem extends RemoteFileSystem {
         const parentPath = this.pathResolver.dirname(dir);
         if (parentPath === dir) throw err;
         await this.ensureDir(parentPath);
-        await this.mkdir(dir);
+        try {
+          await this.mkdir(dir);
+        } catch (afterParent) {
+          // It can have appeared while the parent was being created: two
+          // transfers into the same new folder walk the same chain, and the
+          // one that loses gets "failure" from a directory that now exists.
+          // Unguarded, this made concurrent uploads into one directory fail.
+          await this._acceptExistingDirectory(dir, afterParent);
+        }
         break;
       }
 
-      // In the case of any other error, just see if there's a dir
-      // there already.  If so, then hooray!  If not, then something
-      // is borked.
+      // Any other error: see whether a directory is there already. If so, then
+      // hooray; if not, something is genuinely wrong.
       default:
-        try {
-          const stat = await this.lstat(dir);
-          if (stat.type !== FileType.Directory) throw err;
-        } catch {
-          // if the stat fails, then that's super weird.
-          // let the original error be the failure reason
-          throw err;
-        }
+        await this._acceptExistingDirectory(dir, err);
         break;
     }
   }
