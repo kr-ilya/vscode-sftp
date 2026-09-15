@@ -1,9 +1,9 @@
-# Home
+# SyncX documentation
 
-1. [Setting](./setting.md)
-2. [Config](./configuration.md)
-    - [Common](./common_configuration.md)
-    - [SFTP](./sftp_configuration.md)
-    - [FTP(s)](./ftp_configuration.md)
+1. [Editor settings](./setting.md) — the three settings under `syncx.*`
+2. [Configuration](./configuration.md) — every option of `.vscode/sftp.json`
+   - [Common](./configuration.md#configuration)
+   - [SFTP only](./configuration.md#sftp-only-configuration)
+   - [FTP(s) only](./configuration.md#ftps-only-configuration)
 3. [Commands](./commands.md)
-4. [FAQ](./../FAQ.md)
+4. [FAQ](./../FAQ.md) — [по-русски](./../FAQ.ru.md)

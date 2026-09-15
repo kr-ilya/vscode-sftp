@@ -166,7 +166,7 @@ All are prefixed **SyncX:** in the palette. Most also sit in the explorer's cont
 
 ## Documentation
 
-[Commands](docs/commands.md) · [Configuration](docs/configuration.md) · [Common options](docs/common_configuration.md) · [SFTP options](docs/sftp_configuration.md) · [FTP options](docs/ftp_configuration.md) · [Editor settings](docs/setting.md) · [FAQ](FAQ.md)
+[Commands](docs/commands.md) · [Configuration](docs/configuration.md) — every option, with [SFTP](docs/configuration.md#sftp-only-configuration) and [FTP](docs/configuration.md#ftps-only-configuration) sections · [Editor settings](docs/setting.md) · [FAQ](FAQ.md)
 
 ## When something looks wrong
 

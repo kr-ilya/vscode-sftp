@@ -1,33 +1,65 @@
-## Setting
+# Editor settings
 
-There are a handful of settings available for SFTP, and they can be changed:
+Three settings, in VS Code's own settings rather than in `.vscode/sftp.json`:
 
-- On Windows/Linux: File --> Preferences --> Settings
-- On macOS: Code --> Preferences --> Settings
+- Windows/Linux: **File → Preferences → Settings**
+- macOS: **Code → Settings → Settings**
 
-### debug
-Adds debugging output to the SFTP output panel. <br>
-You can view the login in `View --> Output --> SFTP`.  Changing this requires VSCode to be reloaded.
+Search for `syncx`, or edit `settings.json` directly.
+
+These are settings of the editor. Everything about a *server* lives in
+`.vscode/sftp.json` — see [Configuration](./configuration.md).
+
+## syncx.debug
+
+Verbose logging in the output channel. Useful when reporting a problem: it
+records what was attempted and what the server answered.
+
+Read it in **View → Output**, channel **syncx**. The per-event decisions of
+change detection have their own channel, **SyncX: change detection**, which is
+written regardless of this setting.
+
+The level is read when the extension activates, so **reload the window** after
+changing it.
 
 | Key | Value | Default |
 | --- | --- | --- |
-| *debug* | *boolean* | *false* |
+| `syncx.debug` | *boolean* | `false` |
 
 ```json
 {
-  "name": "My Server"
+  "syncx.debug": true
 }
 ```
 
-### downloadWhenOpenInRemoteExplorer
-Change the default behavior from `View Content` to `Edit in Local` when opening files in the Remote Explorer.
+## syncx.printDebugLog
+
+The same thing under its older name, kept so existing settings keep working.
+Either turns verbose logging on.
 
 | Key | Value | Default |
 | --- | --- | --- |
-| *debug* | *boolean* | *false* |
+| `syncx.printDebugLog` | *boolean* | `false` |
+
+## syncx.downloadWhenOpenInRemoteExplorer
+
+What clicking a file in the remote explorer does.
+
+- `false` — open a read-only preview of the file as it is on the server.
+- `true` — download it and open the local copy, ready to edit.
+
+| Key | Value | Default |
+| --- | --- | --- |
+| `syncx.downloadWhenOpenInRemoteExplorer` | *boolean* | `false` |
 
 ```json
 {
-  "name": "My Server"
+  "syncx.downloadWhenOpenInRemoteExplorer": true
 }
 ```
+
+## remotefs.remote
+
+Not a setting of this extension, but read by it: named remotes, so that a
+server's connection details live in your user settings instead of in a file
+committed with the project. See [`remote`](./configuration.md#remote).

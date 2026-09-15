@@ -10,8 +10,8 @@ connection details, test them, and store the password in SecretStorage before wr
 `.vscode/sftp.json`.
 
 ### SyncX: Set Profile
-Switch the active profile (see the example in the [README](../README.md#getting-started)).
-The watcher restarts with that profile's settings.
+Switch the active [profile](configuration.md#profiles). The watcher restarts with
+that profile's settings.
 
 **Keybinding argument:** `func(profileName: string)`
 

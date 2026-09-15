@@ -166,7 +166,7 @@ code --install-extension syncx-<version>.vsix
 
 ## Документация
 
-[Команды](docs/commands.md) · [Конфигурация](docs/configuration.md) · [Общие параметры](docs/common_configuration.md) · [Параметры SFTP](docs/sftp_configuration.md) · [Параметры FTP](docs/ftp_configuration.md) · [Настройки редактора](docs/setting.md) · [Частые вопросы](FAQ.ru.md)
+[Команды](docs/commands.md) · [Конфигурация](docs/configuration.md) — все параметры, с разделами [SFTP](docs/configuration.md#sftp-only-configuration) и [FTP](docs/configuration.md#ftps-only-configuration) · [Настройки редактора](docs/setting.md) · [Частые вопросы](FAQ.ru.md)
 
 Документация в `docs/` — на английском.
 
