@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { EXTENSION_DISPLAY_NAME } from '../../constants';
 import { formatCounters } from '../../core/watch/diagnostics';
 import { getTreeHandles } from './watcherService';
 
@@ -16,7 +17,7 @@ let channel: vscode.OutputChannel | null = null;
 
 export function getWatchOutput(): vscode.OutputChannel {
   if (!channel) {
-    channel = vscode.window.createOutputChannel('SyncX: change detection');
+    channel = vscode.window.createOutputChannel(`${EXTENSION_DISPLAY_NAME}: change detection`);
   }
   return channel;
 }

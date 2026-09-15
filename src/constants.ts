@@ -2,7 +2,16 @@ import * as path from 'path';
 
 const VENDOR_FOLDER = '.vscode';
 
+/**
+ * The identifier, lowercase. This one string is also the settings section
+ * (`syncx.debug`) and the prefix of the context keys the menus are gated on
+ * (`syncx.enabled`), both of which are declared that way in package.json -- so
+ * it cannot be changed for the sake of appearances.
+ */
 export const EXTENSION_NAME = 'syncx';
+
+/** The name shown to a person: output channels, and anywhere else on screen. */
+export const EXTENSION_DISPLAY_NAME = 'SyncX';
 // Deliberately unchanged: this is a user setting we only read, so sharing it
 // with upstream costs nothing and keeps existing named remotes working.
 export const SETTING_KEY_REMOTE = 'remotefs.remote';

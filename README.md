@@ -172,7 +172,7 @@ All are prefixed **SyncX:** in the palette. Most also sit in the explorer's cont
 
 Two output channels:
 
-- **syncx** — operations and errors.
+- **SyncX** — operations and errors.
 - **SyncX: change detection** — one line per event: what was uploaded, what was stopped, and why.
 
 `SyncX: Show Change Detection Diagnostics` gives the counters, and `Dry Run` shows what *would* be sent without sending it — between them, "why did it upload that" is answerable rather than guessable. Set `syncx.debug` for verbose logging; the level is read at activation, so reload the window after changing it.

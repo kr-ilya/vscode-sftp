@@ -15,7 +15,7 @@ These are settings of the editor. Everything about a *server* lives in
 Verbose logging in the output channel. Useful when reporting a problem: it
 records what was attempted and what the server answered.
 
-Read it in **View → Output**, channel **syncx**. The per-event decisions of
+Read it in **View → Output**, channel **SyncX**. The per-event decisions of
 change detection have their own channel, **SyncX: change detection**, which is
 written regardless of this setting.
 
