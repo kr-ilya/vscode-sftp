@@ -307,3 +307,98 @@ describe('reporting progress', () => {
     expect(await fse.readFile(at('dst.txt'), 'utf8')).toBe('hello world');
   });
 });
+
+describe('descriptors when a transfer fails before it starts', () => {
+  /**
+   * The invariant: nothing stays open.
+   *
+   * Windows CI found this as `EPERM: operation not permitted` while cleaning up
+   * a staging file, because the file was still open. The cause is that
+   * `Promise.all` rejects on the first failure and abandons the rest -- a
+   * missing source aborted the pair while the target was still opening, and the
+   * descriptor that arrived afterwards was held by nobody.
+   *
+   * Asserted against a stand-in rather than against the disk: on POSIX the leak
+   * has no symptom at all (unlink works on an open file), and on Windows it
+   * depends on which of the two finishes first. Counting opens against closes
+   * is true on every platform and on every run.
+   */
+  function recordingFileSystem(openDelayMs: number) {
+    const opens: string[] = [];
+    const closes: number[] = [];
+    let nextHandle = 1;
+
+    const fileSystem = {
+      pathResolver: {
+        dirname: (p: string) => path.dirname(p),
+        basename: (p: string) => path.basename(p),
+        join: (a: string, b: string) => path.join(a, b),
+      },
+      async open(p: string) {
+        // Resolves after the source has already failed, which is the ordering
+        // that produced the leak.
+        await new Promise(resolve => setTimeout(resolve, openDelayMs));
+        opens.push(p);
+        return nextHandle++;
+      },
+      async close(handle: number) {
+        closes.push(handle);
+      },
+      async unlink() {
+        return undefined;
+      },
+    };
+
+    return { fileSystem, opens, closes };
+  }
+
+  test('a descriptor opened after the source failed is still closed', async () => {
+    const { fileSystem, opens, closes } = recordingFileSystem(20);
+    const source = {
+      async get() {
+        throw new Error('ENOENT: no such file');
+      },
+    };
+
+    const transfer = new TransferTask(
+      { fsPath: '/src/a.txt', fileSystem: source as never },
+      { fsPath: '/dst/a.txt', fileSystem: fileSystem as never },
+      {
+        fileType: FileType.File,
+        transferDirection: TransferDirection.LOCAL_TO_REMOTE,
+        transferOption: { preserveTargetMode: false },
+      } as never
+    );
+
+    await expect(transfer.run()).rejects.toThrow('ENOENT');
+
+    // Long enough for an abandoned open to have landed, so the assertion is
+    // about what is left open rather than about who finished first.
+    await new Promise(resolve => setTimeout(resolve, 60));
+
+    expect(opens).toHaveLength(1);
+    expect(closes, 'every descriptor that was opened must have been closed').toEqual([1]);
+  });
+
+  test('the source failure is what gets reported, not the target', async () => {
+    const { fileSystem } = recordingFileSystem(20);
+    const source = {
+      async get() {
+        throw new Error('ENOENT: no such file');
+      },
+    };
+
+    const transfer = new TransferTask(
+      { fsPath: '/src/a.txt', fileSystem: source as never },
+      { fsPath: '/dst/a.txt', fileSystem: fileSystem as never },
+      {
+        fileType: FileType.File,
+        transferDirection: TransferDirection.LOCAL_TO_REMOTE,
+        transferOption: { preserveTargetMode: false },
+      } as never
+    );
+
+    // "could not open the target" would say nothing about the real problem.
+    await expect(transfer.run()).rejects.toThrow('ENOENT');
+  });
+});

@@ -210,9 +210,21 @@ export default class TransferTask implements Task {
     // are opened together, so the staging file can exist before the transfer
     // body is ever entered.
     const staged: string[] = [];
+    const opened: unknown[] = [];
     try {
-      await this._runTransfer(staged);
+      await this._runTransfer(staged, opened);
     } catch (error) {
+      // Descriptors first, files second. Windows will not unlink a file that
+      // something still holds open -- it answers EPERM, and the staging file
+      // survives the cleanup that exists to remove it. POSIX allows it, which
+      // is why this went unnoticed until a Windows CI run.
+      for (const handle of opened) {
+        try {
+          await this._targetFs.close(handle as never);
+        } catch {
+          // Already closed, or never usable.
+        }
+      }
       for (const path of staged) {
         try {
           await this._targetFs.unlink(path);
@@ -224,7 +236,50 @@ export default class TransferTask implements Task {
     }
   }
 
-  private async _runTransfer(staged: string[]) {
+  /**
+   * Awaits two openings together, keeping whatever succeeded when the other
+   * fails.
+   *
+   * `Promise.all` rejects on the first failure and abandons the rest, so a
+   * missing source left the staging file open with its descriptor held by
+   * nobody: unreachable, uncloseable, and on Windows enough to make the
+   * cleanup fail. Here both settle, anything obtained is registered for
+   * release, and the source's failure is the one reported -- it says more
+   * about what went wrong than "could not open the target".
+   */
+  private async _openBoth<A, B>(
+    source: Promise<A>,
+    target: Promise<B>,
+    opened: unknown[]
+  ): Promise<[A, B]> {
+    const [fromSource, fromTarget] = await Promise.allSettled([source, target]);
+
+    if (fromTarget.status === 'fulfilled') {
+      opened.push(fromTarget.value);
+    }
+    if (fromSource.status === 'rejected') {
+      throw fromSource.reason;
+    }
+    if (fromTarget.status === 'rejected') {
+      throw fromTarget.reason;
+    }
+
+    return [fromSource.value, fromTarget.value];
+  }
+
+  private async _runTransfer(staged: string[], opened: unknown[]) {
+    /**
+     * Closes a descriptor and stops tracking it.
+     *
+     * Forgetting matters as much as closing: a descriptor number is reused once
+     * released, so a second close from the cleanup path could land on whatever
+     * opened next.
+     */
+    const release = async (handle: unknown): Promise<void> => {
+      await this._targetFs.close(handle as never);
+      const index = opened.indexOf(handle);
+      if (index !== -1) opened.splice(index, 1);
+    };
 
     const src = this._srcFsPath;
     const target = this._targetFsPath;
@@ -251,11 +306,13 @@ export default class TransferTask implements Task {
     // Then check preserveTargetMode and fallback to fallbackMode if fail to get mode of target
     if (mode === undefined && preserveTargetMode) {
       if (useTempFile) {
-        [targetFd, uploadFd] = await Promise.all([
-          targetFs.open(target, 'r')  // Get handle for reading the target mode
-            .catch(() => null), // Return null if target file doesn't exist
-          targetFs.open(uploadTarget, 'w')  // Get handle for the file upload
-        ]);
+        [targetFd, uploadFd] = await this._openBoth(
+          // null when the target does not exist yet; its mode then falls back.
+          targetFs.open(target, 'r').catch(() => null),
+          targetFs.open(uploadTarget, 'w'),
+          opened
+        );
+        if (targetFd) opened.push(targetFd);
       } else {
         targetFd = uploadFd = await targetFs.open(uploadTarget, 'w');
       }
@@ -268,12 +325,13 @@ export default class TransferTask implements Task {
             .then(stat => stat.mode)
             .catch(() => fallbackMode),
         ]);
+        // Neither of those opens a descriptor, so Promise.all is safe here.
 
         if (useTempFile) {
           // The handle was opened only to read the target's mode. Closing it
           // was fire-and-forget, so a failure went nowhere and the close raced
           // the rest of the transfer.
-          await targetFs.close(targetFd);
+          await release(targetFd);
         }
 
       } else {
@@ -282,7 +340,7 @@ export default class TransferTask implements Task {
       }
 
     } else {
-      [this._handle, uploadFd] = await Promise.all([
+      [this._handle, uploadFd] = await this._openBoth(
         srcFs.get(src),
         targetFs.open(uploadTarget, 'w').catch(error => {
           if (!useTempFile) throw error;
@@ -299,7 +357,8 @@ export default class TransferTask implements Task {
           staged.length = 0;
           return targetFs.open(target, 'w');
         }),
-      ]);
+        opened
+      );
     }
 
     try {
@@ -356,7 +415,7 @@ export default class TransferTask implements Task {
       // Moved into place: there is nothing left to clean up.
       staged.length = 0;
     } finally {
-      await targetFs.close(uploadFd);
+      await release(uploadFd);
     }
   }
 }
