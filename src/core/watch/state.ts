@@ -1,4 +1,5 @@
 import type { PathKey } from './pathkey';
+import { HASH_ALGORITHM } from './policy';
 
 /**
  * What is remembered about a file between events, and between windows.
@@ -53,13 +54,42 @@ export interface StateStore {
  * empty store means "seed from disk and upload nothing" rather than "upload
  * everything".
  */
-export const STATE_FORMAT_VERSION = 1;
+export const STATE_FORMAT_VERSION = 2;
+
+/**
+ * One record as it is written to disk.
+ *
+ * Short names on purpose, and only here: the file holds one of these per file
+ * in the workspace and is rewritten whole every time anything changes, so its
+ * size is a cost paid over and over rather than once. In memory the fields keep
+ * their real names -- the gate reads them on every event, and `r.mtimeMs` says
+ * what `r.m` does not.
+ *
+ * `algorithm` is not in here. It is the same value in every record, so it is
+ * written once for the whole file.
+ */
+interface StoredRecord {
+  /** size */
+  s: number;
+  /** mtimeMs */
+  m: number;
+  /** ino */
+  i?: number;
+  /** dev */
+  d?: number;
+  /** hash */
+  h: string;
+  /** at */
+  t: number;
+}
 
 export interface SerializedState {
   version: number;
   /** Which service/profile this state belongs to; see the loader. */
   scope: string;
-  entries: Record<string, StateRecord>;
+  /** The digest algorithm every record in this file was written with. */
+  algorithm: string;
+  entries: Record<string, StoredRecord>;
 }
 
 export function createStateStore(initial?: Iterable<[PathKey, StateRecord]>): StateStore {
@@ -76,12 +106,26 @@ export function createStateStore(initial?: Iterable<[PathKey, StateRecord]>): St
 }
 
 export function serializeState(scope: string, store: StateStore): SerializedState {
-  const entries: Record<string, StateRecord> = {};
+  const entries: Record<string, StoredRecord> = {};
+  let algorithm = HASH_ALGORITHM;
+
   for (const key of store.keys()) {
     const record = store.get(key);
-    if (record) entries[key] = record;
+    if (!record) continue;
+    // Every record is written by the same code with the same algorithm; the
+    // last one seen is the file's.
+    algorithm = record.algorithm;
+    entries[key] = {
+      s: record.size,
+      m: record.mtimeMs,
+      i: record.ino,
+      d: record.dev,
+      h: record.hash,
+      t: record.at,
+    };
   }
-  return { version: STATE_FORMAT_VERSION, scope, entries };
+
+  return { version: STATE_FORMAT_VERSION, scope, algorithm, entries };
 }
 
 /**
@@ -119,22 +163,39 @@ export function deserializeState(
     return { store: createStateStore(), accepted: false, reason: 'no entries' };
   }
 
+  const algorithm = typeof candidate.algorithm === 'string' ? candidate.algorithm : '';
+  if (!algorithm) {
+    return { store: createStateStore(), accepted: false, reason: 'no algorithm' };
+  }
+
   const pairs: Array<[PathKey, StateRecord]> = [];
   for (const [key, value] of Object.entries(candidate.entries)) {
-    if (isStateRecord(value)) pairs.push([key as PathKey, value]);
+    if (isStoredRecord(value)) {
+      pairs.push([
+        key as PathKey,
+        {
+          size: value.s,
+          mtimeMs: value.m,
+          ino: value.i,
+          dev: value.d,
+          algorithm,
+          hash: value.h,
+          at: value.t,
+        },
+      ]);
+    }
   }
   return { store: createStateStore(pairs), accepted: true };
 }
 
-function isStateRecord(value: unknown): value is StateRecord {
+function isStoredRecord(value: unknown): value is StoredRecord {
   if (!value || typeof value !== 'object') return false;
-  const r = value as Partial<StateRecord>;
+  const r = value as Partial<StoredRecord>;
   return (
-    typeof r.size === 'number' &&
-    typeof r.mtimeMs === 'number' &&
-    typeof r.algorithm === 'string' &&
-    typeof r.hash === 'string' &&
-    typeof r.at === 'number'
+    typeof r.s === 'number' &&
+    typeof r.m === 'number' &&
+    typeof r.h === 'string' &&
+    typeof r.t === 'number'
   );
 }
 

@@ -59,11 +59,67 @@ describe('refusing to guess', () => {
     const { store, accepted } = deserializeState('s', {
       version: STATE_FORMAT_VERSION,
       scope: 's',
-      entries: { '/good': record(), '/bad': { size: 'huge' }, '/alsoBad': null },
+      algorithm: 'sha256',
+      entries: {
+        '/good': { s: 10, m: 100, i: 1, d: 2, h: 'h', t: 50 },
+        '/bad': { s: 'huge' },
+        '/alsoBad': null,
+      },
     });
     expect(accepted).toBe(true);
     expect(store.size).toBe(1);
     expect(store.get(key('/good'))).toBeTruthy();
+  });
+
+  test('rejects a file with no algorithm, rather than assuming one', () => {
+    // The algorithm is written once for the whole file now. A file without it
+    // is from some other format; guessing sha256 would mean comparing hashes
+    // that were never comparable.
+    const { accepted, store } = deserializeState('s', {
+      version: STATE_FORMAT_VERSION,
+      scope: 's',
+      entries: { '/a': { s: 1, m: 2, h: 'h', t: 3 } },
+    });
+    expect(accepted).toBe(false);
+    expect(store.size).toBe(0);
+  });
+});
+
+describe('what actually goes on disk', () => {
+  // The file holds one record per file in the workspace and is rewritten whole
+  // whenever anything changes, so its shape is a cost paid repeatedly. These
+  // pin it: long names here would not fail any behavioural test.
+  const stored = () => {
+    const store = createStateStore();
+    store.set(key('/a/b.txt'), record());
+    return serializeState('scope-1', store).entries['/a/b.txt'] as unknown as Record<string, unknown>;
+  };
+
+  test('every field name is one character', () => {
+    expect(Object.keys(stored()).every(name => name.length === 1)).toBe(true);
+  });
+
+  test('the algorithm is written once for the file, not per record', () => {
+    const store = createStateStore();
+    store.set(key('/a/b.txt'), record());
+    store.set(key('/a/c.txt'), record());
+    const serialized = serializeState('scope-1', store);
+
+    expect(serialized.algorithm).toBe('sha256');
+    expect(JSON.stringify(serialized.entries)).not.toContain('sha256');
+  });
+
+  test('a record round trips through the short form unchanged', () => {
+    const store = createStateStore();
+    const original = record({ hash: 'abc', size: 42, mtimeMs: 1744187977276.0037 });
+    store.set(key('/a/b.txt'), original);
+
+    const { store: restored } = deserializeState(
+      'scope-1',
+      JSON.parse(JSON.stringify(serializeState('scope-1', store)))
+    );
+
+    expect(restored.get(key('/a/b.txt'))).toEqual(original);
   });
 });
 
