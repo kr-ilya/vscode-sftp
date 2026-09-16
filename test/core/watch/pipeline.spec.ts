@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { processBatch, recordSynced, type PipelineDeps } from '../../../src/core/watch/pipeline';
 import { createStateStore, recordFrom, type EntryFacts } from '../../../src/core/watch/state';
 import { createExpectationRegistry } from '../../../src/core/watch/expectations';
+import { createUploadClaims } from '../../../src/core/watch/uploadClaims';
 import { createPathKeyer, type PathKey } from '../../../src/core/watch/pathkey';
 import { createCounters } from '../../../src/core/watch/diagnostics';
 import type { PendingEvent } from '../../../src/core/watch/batch';
@@ -42,6 +43,7 @@ function setup(files: Parameters<typeof makeDisk>[0], overrides: Partial<Pipelin
   const deps: PipelineDeps = {
     store,
     expectations: createExpectationRegistry(keyer, () => clock),
+    claims: createUploadClaims(keyer),
     keyer,
     policy: { autoUpload: true, autoDelete: false, followSymlinks: false },
     isIgnored: () => false,
@@ -299,6 +301,83 @@ describe('scenario 8: our own writes', () => {
 
     const outcomes = await processBatch([event('/w/a.txt')], deps);
     expect(outcomes.map(o => o.decision.action)).toEqual(['upload']);
+  });
+});
+
+describe('uploadOnSave and the watcher answering the same save', () => {
+  /** A file that changed since it was last recorded, as a save leaves it. */
+  function saved() {
+    const ctx = setup({ '/w/a.txt': { content: 'edited', mtimeMs: 900 } });
+    ctx.store.set(keyer('/w/a.txt'), recordFrom(
+      { type: 'file', size: 5, mtimeMs: 100, ino: 1, dev: 1 },
+      { algorithm: 'sha256', hash: 'older' },
+      0
+    ));
+    return ctx;
+  }
+
+  test('without a claim the watcher sends what uploadOnSave is already sending', async () => {
+    const { deps } = saved();
+    const outcomes = await processBatch([event('/w/a.txt')], deps);
+
+    expect(outcomes.map(o => o.decision.action)).toEqual(['upload']);
+  });
+
+  test('a claim on those bytes drops the event, and the file is not read', async () => {
+    const { deps, disk } = saved();
+    deps.claims.claim('/w/a.txt', { size: 'edited'.length, mtimeMs: 900, ino: 1, dev: 1 });
+
+    const outcomes = await processBatch([event('/w/a.txt')], deps);
+
+    expect(outcomes).toHaveLength(0);
+    expect(disk.reads).toEqual([]);
+  });
+
+  test('nothing is recorded while the upload is still running', async () => {
+    // The transfer records the file when it succeeds. Recording it here would
+    // claim the server has content that is still on its way -- and if the
+    // upload then failed, the next event would find matching facts and skip.
+    const { deps, store } = saved();
+    deps.claims.claim('/w/a.txt', { size: 'edited'.length, mtimeMs: 900, ino: 1, dev: 1 });
+
+    await processBatch([event('/w/a.txt')], deps);
+
+    expect(store.get(keyer('/w/a.txt'))?.hash).toBe('older');
+  });
+
+  test('saving again during the upload is uploaded, not swallowed', async () => {
+    const { deps, disk } = setup({ '/w/a.txt': { content: 'edited-twice', mtimeMs: 950 } });
+    // The claim describes the earlier save; the disk has moved on since.
+    deps.claims.claim('/w/a.txt', { size: 'edited'.length, mtimeMs: 900, ino: 1, dev: 1 });
+
+    const outcomes = await processBatch([event('/w/a.txt')], deps);
+
+    expect(outcomes.map(o => o.decision.action)).toEqual(['upload']);
+    expect(disk.reads).toEqual([]);
+  });
+
+  test('once the upload releases its claim, the file is judged normally again', async () => {
+    const { deps } = saved();
+    const claim = deps.claims.claim('/w/a.txt', {
+      size: 'edited'.length,
+      mtimeMs: 900,
+      ino: 1,
+      dev: 1,
+    });
+    claim.release();
+
+    const outcomes = await processBatch([event('/w/a.txt')], deps);
+    expect(outcomes.map(o => o.decision.action)).toEqual(['upload']);
+  });
+
+  test('the skip is reported as its own reason, not hidden among the others', async () => {
+    const { deps, counters } = saved();
+    deps.claims.claim('/w/a.txt', { size: 'edited'.length, mtimeMs: 900, ino: 1, dev: 1 });
+
+    await processBatch([event('/w/a.txt')], deps);
+
+    expect(counters.skipped['upload-in-flight']).toBe(1);
+    expect(counters.uploaded).toBe(0);
   });
 });
 

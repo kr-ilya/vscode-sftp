@@ -164,6 +164,48 @@ export class EventEmitter<T> {
   }
 }
 
+/** The `base` + glob pair `createFileSystemWatcher` is given. */
+export class RelativePattern {
+  constructor(readonly baseUri: string, readonly pattern: string) {}
+}
+
+/**
+ * A file-system watcher a test can drive.
+ *
+ * `fire` is what the real watcher does when the platform reports something;
+ * having it here is what lets a test say "the file system reported a change"
+ * without touching a disk or waiting on a real watcher to notice.
+ */
+export class FakeFileSystemWatcher {
+  private readonly _created = new EventEmitter<Uri>();
+  private readonly _changed = new EventEmitter<Uri>();
+  private readonly _deleted = new EventEmitter<Uri>();
+  disposed = false;
+
+  constructor(readonly pattern: RelativePattern) {}
+
+  onDidCreate = this._created.event;
+  onDidChange = this._changed.event;
+  onDidDelete = this._deleted.event;
+
+  fire(kind: 'create' | 'change' | 'delete', fsPath: string): void {
+    const uri = Uri.file(fsPath);
+    if (kind === 'create') this._created.fire(uri);
+    else if (kind === 'change') this._changed.fire(uri);
+    else this._deleted.fire(uri);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this._created.dispose();
+    this._changed.dispose();
+    this._deleted.dispose();
+  }
+}
+
+/** Every watcher handed out, so a test can reach the one it wants to drive. */
+export const createdWatchers: FakeFileSystemWatcher[] = [];
+
 export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
 export const StatusBarAlignment = { Left: 1, Right: 2 } as const;
 export const ExtensionMode = { Production: 1, Development: 2, Test: 3 } as const;
@@ -254,9 +296,27 @@ export const openedProgress: FakeProgress[] = [];
  */
 export const inputBoxAnswers: Array<string | undefined> = [];
 
+/** Answers `showWarningMessage` hands back, in order; `undefined` = dismissed. */
+export const warningAnswers: Array<string | undefined> = [];
+
+/** Every warning shown, so a test can assert on what the user was told. */
+export const shownWarnings: Array<{
+  message: string;
+  options: { modal?: boolean; detail?: string };
+  items: string[];
+}> = [];
+
 export const window = strict('window', {
   createStatusBarItem: () => new FakeStatusBarItem(),
   showInputBox: async () => inputBoxAnswers.shift(),
+  showWarningMessage: async (
+    message: string,
+    options: { modal?: boolean; detail?: string },
+    ...items: string[]
+  ) => {
+    shownWarnings.push({ message, options, items });
+    return warningAnswers.shift();
+  },
   createOutputChannel: (name: string) => new FakeOutputChannel(name),
   registerFileDecorationProvider: () => new Disposable(),
   async withProgress<R>(
@@ -274,6 +334,11 @@ export const window = strict('window', {
 export const workspace = strict('workspace', {
   workspaceFolders: undefined as unknown,
   getConfiguration: () => ({ get: () => undefined }),
+  createFileSystemWatcher: (pattern: RelativePattern) => {
+    const watcher = new FakeFileSystemWatcher(pattern);
+    createdWatchers.push(watcher);
+    return watcher;
+  },
 });
 
 export const commands = strict('commands', {

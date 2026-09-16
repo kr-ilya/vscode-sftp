@@ -1,7 +1,27 @@
 import { FileService, FileType } from '../core';
+import type { RemoteDestination } from '../core/remotePathGuard';
+import type { FileHandlerContext } from './createFileHandler';
 import UResource from '../uResource';
 import app from '../app';
 import logger from '../logger';
+
+/**
+ * The destination a write would land in, as configured.
+ *
+ * Built from `config.remotePath` rather than from the file's own remote path:
+ * the question the guard asks is whether the *configuration* points where it
+ * was meant to, not whether one particular file does.
+ */
+export function destinationOf(context: FileHandlerContext): RemoteDestination {
+  const { config } = context;
+  return {
+    protocol: config.protocol ?? 'sftp',
+    host: config.host,
+    port: config.port ?? (config.protocol === 'ftp' ? 21 : 22),
+    username: config.username ?? '',
+    remotePath: config.remotePath,
+  };
+}
 
 /**
  * Redraws the remote explorer after an operation.

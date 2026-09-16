@@ -1,5 +1,5 @@
 import type { EntryFacts, StateRecord } from '../watch/state';
-import { factsMatchRecord } from '../watch/state';
+import { factsMatch } from '../watch/state';
 
 /**
  * How a file on the server stands against the copy on disk.
@@ -96,7 +96,7 @@ export function compareEntry({ remote, local, record }: StatusInput): StatusVerd
     // The record says what was last put on the server. If the local file still
     // matches it, the local side has not moved -- so the newer timestamp is the
     // server's, and the content is still ours.
-    if (factsMatchRecord(local, record)) {
+    if (factsMatch(local, record)) {
       return { status: 'same', reason: 'unchanged since the last transfer' };
     }
     return { status: 'different', reason: 'the local file has changed since the last transfer' };

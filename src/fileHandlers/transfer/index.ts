@@ -1,26 +1,7 @@
-import { refreshRemoteExplorer } from '../shared';
-import createFileHandler, { FileHandlerContext } from '../createFileHandler';
+import { refreshRemoteExplorer, destinationOf } from '../shared';
+import createFileHandler, { type FileHandlerContext } from '../createFileHandler';
 import { ensureRemotePathApproved } from '../../modules/remotePathApproval';
-import type { RemoteDestination } from '../../core/remotePathGuard';
 import { transfer, sync, TransferOption, SyncOption, TransferDirection } from './transfer';
-
-/**
- * The destination a write would land in, as configured.
- *
- * Built from `config.remotePath` rather than from the file's own remote path:
- * the question the guard asks is whether the *configuration* points where it
- * was meant to, not whether one particular file does.
- */
-function destinationOf(context: FileHandlerContext): RemoteDestination {
-  const { config } = context;
-  return {
-    protocol: config.protocol ?? 'sftp',
-    host: config.host,
-    port: config.port ?? (config.protocol === 'ftp' ? 21 : 22),
-    username: config.username ?? '',
-    remotePath: config.remotePath,
-  };
-}
 
 function createTransferHandle(direction: TransferDirection) {
   return async function handle(this: FileHandlerContext, option) {
@@ -41,10 +22,9 @@ function createTransferHandle(direction: TransferDirection) {
       };
     } else {
       // Asked once per destination, before anything is written. A mistyped
-      // remotePath otherwise reveals itself only as damage.
-      if (!(await ensureRemotePathApproved(destinationOf(this), remoteFs))) {
-        return;
-      }
+      // remotePath otherwise reveals itself only as damage. Declining throws,
+      // so nothing downstream can mistake it for a finished transfer.
+      await ensureRemotePathApproved(destinationOf(this), remoteFs);
 
       transferConfig = {
         srcFsPath: localFsPath,
@@ -73,9 +53,7 @@ export const sync2Remote = createFileHandler<SyncOption>({
     const localFs = this.fileService.getLocalFileSystem();
     const { localFsPath, remoteFsPath } = this.target;
 
-    if (!(await ensureRemotePathApproved(destinationOf(this), remoteFs))) {
-      return;
-    }
+    await ensureRemotePathApproved(destinationOf(this), remoteFs);
 
     const scheduler = this.fileService.createTransferScheduler(this.config.concurrency);
     // Attach filePerm and dirPerm to transferOption

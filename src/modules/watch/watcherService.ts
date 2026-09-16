@@ -5,6 +5,7 @@ import type { WatcherService, WatcherContext } from '../../core';
 import { createPathKeyer, type CaseSensitivity } from '../../core/watch/pathkey';
 import { createEventBatcher, type PendingEvent } from '../../core/watch/batch';
 import { createExpectationRegistry } from '../../core/watch/expectations';
+import { createUploadClaims } from '../../core/watch/uploadClaims';
 import { readFacts, readDigest, readFileState } from '../../core/watch/facts';
 import { processBatch, recordSynced, forget } from '../../core/watch/pipeline';
 import { executeOutcomes } from '../../core/watch/execute';
@@ -15,6 +16,7 @@ import { loadPersistentState, type PersistentState } from './stateStore';
 import { getWatchOutput } from './output';
 import { walkFiles } from './walk';
 import { isSubpathOf } from '../../core/util/paths';
+import { DestinationDeclinedError } from '../../helper';
 
 /**
  * The editor-facing half of change detection.
@@ -66,6 +68,11 @@ async function createTree(
   if (!pattern || (!policy.autoUpload && !policy.autoDelete)) return;
 
   const keyer = createPathKeyer(platformCaseSensitivity());
+  const claims = createUploadClaims(keyer);
+  // A tree outlives its disposal by as long as the longest transfer it started:
+  // a failed upload asks for its file to be examined again, and by then the
+  // config may have been reloaded and this tree replaced.
+  let disposed = false;
   const counters = createCounters();
   const output = getWatchOutput();
 
@@ -94,6 +101,7 @@ async function createTree(
     concurrency: watcherConcurrency,
     store: persistent.store,
     expectations,
+    claims,
     keyer,
     policy,
     isIgnored: context.isIgnored,
@@ -154,6 +162,11 @@ async function createTree(
       onFailed(error, outcome) {
         // Deliberately no state record on failure: the file stays "not known to
         // match", so the next event tries again instead of assuming success.
+        if (error instanceof DestinationDeclinedError) {
+          // Not a failure: the user was asked and said no, and the guard has
+          // already logged it. What matters is that nothing is recorded.
+          return;
+        }
         logger.error(error as Error, `[watch] ${outcome.decision.action} ${outcome.path}`);
       },
       onSettled: () => persistent.markDirty(),
@@ -185,6 +198,7 @@ async function createTree(
   trees.set(watcherBase, {
     watcher,
     dispose() {
+      disposed = true;
       batcher.cancel();
       for (const s of subscriptions) s.dispose();
       watcher.dispose();
@@ -193,7 +207,14 @@ async function createTree(
     },
   });
 
-  registerTree(watcherBase, { counters, deps, persistent });
+  registerTree(watcherBase, {
+    counters,
+    deps,
+    persistent,
+    reexamine: path => {
+      if (!disposed) batcher.add(path, 'change');
+    },
+  });
   logger.info(`[watch] watching ${watcherBase} (${pattern})`);
 
   // Cold start: an empty store must not mean "upload everything". Seeding
@@ -219,6 +240,8 @@ export interface TreeHandle {
   counters: WatchCounters;
   deps: Parameters<typeof processBatch>[1];
   persistent: PersistentState;
+  /** Puts a path back through the gate, as if the file system had reported it. */
+  reexamine(path: string): void;
 }
 
 const handles = new Map<string, TreeHandle>();
@@ -242,13 +265,69 @@ export function getTreeHandles(): ReadonlyMap<string, TreeHandle> {
  * Costs nothing where no watcher is configured: there is no tracker to update.
  */
 export async function recordTransferred(localPath: string): Promise<void> {
+  const handle = findHandle(localPath);
+  if (!handle) return;
+
+  await recordSynced(handle.deps.keyer(localPath), localPath, handle.deps);
+  handle.persistent.markDirty();
+}
+
+/** The watched tree a local path belongs to, if any. */
+function findHandle(localPath: string): TreeHandle | undefined {
   for (const [base, handle] of handles) {
-    if (localPath === base || isSubpathOf(base, localPath)) {
-      await recordSynced(handle.deps.keyer(localPath), localPath, handle.deps);
-      handle.persistent.markDirty();
-      return;
-    }
+    if (localPath === base || isSubpathOf(base, localPath)) return handle;
   }
+  return undefined;
+}
+
+/** How an upload ended, as far as the claim on it is concerned. */
+export type UploadOutcome = 'uploaded' | 'failed' | 'declined';
+
+/** A claim on an upload that is about to start. */
+export interface UploadInProgress {
+  /**
+   * Withdraws the claim once the upload has settled.
+   *
+   * A *failed* upload puts its file back through the gate, and only if an event
+   * for it was actually held back: that event was suppressed on the strength of
+   * a transfer that then did not happen, and nothing else would try again until
+   * the file changes. Where nothing was suppressed -- a file the watcher's
+   * `files` pattern does not cover -- there is nothing to undo, and inventing a
+   * retry would upload something the watcher was never watching.
+   *
+   * A *declined* upload is not retried at all. The user was asked and said no;
+   * putting the file back would ask again about the same save.
+   */
+  release(outcome: UploadOutcome): void;
+}
+
+const notClaimed: UploadInProgress = { release: () => undefined };
+
+/**
+ * Declares an upload that is about to start, so the watcher does not send the
+ * same bytes a second time.
+ *
+ * Needed only where the extension uploads in response to something the watcher
+ * also sees -- which today means `uploadOnSave`, whose save reaches us twice:
+ * once as the editor's event and once as the file system's. Commands need
+ * nothing: uploading changes no local file, so no event follows.
+ */
+export async function claimUpload(localPath: string): Promise<UploadInProgress> {
+  // No watcher over this file means nothing to suppress, and no reason to stat.
+  const handle = findHandle(localPath);
+  if (!handle) return notClaimed;
+
+  const facts = await readFacts(localPath);
+  if (facts.type !== 'file') return notClaimed;
+
+  const claim = handle.deps.claims.claim(localPath, facts);
+  return {
+    release(outcome) {
+      const heldBack = claim.suppressed;
+      claim.release();
+      if (outcome === 'failed' && heldBack) handle.reexamine(localPath);
+    },
+  };
 }
 
 /**
@@ -261,12 +340,8 @@ export async function recordTransferred(localPath: string): Promise<void> {
  * and declines to guess when it is not.
  */
 export function findSyncedRecord(localPath: string): StateRecord | undefined {
-  for (const [base, handle] of handles) {
-    if (localPath === base || isSubpathOf(base, localPath)) {
-      return handle.deps.store.get(handle.deps.keyer(localPath));
-    }
-  }
-  return undefined;
+  const handle = findHandle(localPath);
+  return handle?.deps.store.get(handle.deps.keyer(localPath));
 }
 
 /**

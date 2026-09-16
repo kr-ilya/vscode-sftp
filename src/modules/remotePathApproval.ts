@@ -7,6 +7,7 @@ import {
   type RemoteDestination,
 } from '../core/remotePathGuard';
 import type { FileSystem } from '../core';
+import { DestinationDeclinedError } from '../helper';
 
 /**
  * Asks once, before the first write to a destination.
@@ -15,6 +16,11 @@ import type { FileSystem } from '../core';
  * boot, dev, etc` tells the user they are about to write into the server root
  * far more plainly than any warning could, and does so even when the path looks
  * unremarkable -- which is the case a heuristic cannot catch.
+ *
+ * Declining throws. It used to answer `false` and let the caller return
+ * quietly, which the watcher could not tell apart from a finished upload: it
+ * recorded the file as being on the server, and then skipped every later event
+ * for it at the metadata gate.
  */
 
 const APPROVAL_PREFIX = 'syncx.remotePathApproved:';
@@ -30,15 +36,39 @@ export function initializeRemotePathApproval(context: vscode.ExtensionContext): 
 /** How many entries to name in the prompt before summarising the rest. */
 const SAMPLE_SIZE = 8;
 
-export async function ensureRemotePathApproved(
+/**
+ * Questions already on screen, so one destination is asked about once.
+ *
+ * A batch is carried out several files at a time, and every one of them checks
+ * the destination before writing. Without this the first batch into a new
+ * destination would stack up one prompt per file in flight -- all of them the
+ * same question.
+ */
+const asking = new Map<string, Promise<void>>();
+
+export function ensureRemotePathApproved(
   destination: RemoteDestination,
   remoteFs: FileSystem
-): Promise<boolean> {
-  if (!memento) return true;
+): Promise<void> {
+  if (!memento) return Promise.resolve();
 
   const key = APPROVAL_PREFIX + destinationKey(destination);
-  if (memento.get<boolean>(key)) return true;
+  if (memento.get<boolean>(key)) return Promise.resolve();
 
+  const open = asking.get(key);
+  if (open) return open;
+
+  const question = ask(destination, remoteFs, key, memento).finally(() => asking.delete(key));
+  asking.set(key, question);
+  return question;
+}
+
+async function ask(
+  destination: RemoteDestination,
+  remoteFs: FileSystem,
+  key: string,
+  store: vscode.Memento
+): Promise<void> {
   const assessment = assessRemotePath(destination.remotePath);
   const contents = await describeContents(destination.remotePath, remoteFs);
 
@@ -61,11 +91,10 @@ export async function ensureRemotePathApproved(
 
   if (choice !== 'Upload here') {
     logger.info(`[guard] upload to ${describeDestination(destination)} declined`);
-    return false;
+    throw new DestinationDeclinedError(describeDestination(destination));
   }
 
-  await memento.update(key, true);
-  return true;
+  await store.update(key, true);
 }
 
 /** Reads the destination so the user can recognise it, or say it is empty. */

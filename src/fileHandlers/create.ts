@@ -1,13 +1,25 @@
-import { refreshRemoteExplorer } from './shared';
+import { refreshRemoteExplorer, destinationOf } from './shared';
 import { fileOperations } from '../core';
 import createFileHandler from './createFileHandler';
+import { ensureRemotePathApproved } from '../modules/remotePathApproval';
 import { FileHandleOption } from './option';
+
+/**
+ * Creating an entry writes to the destination, so it asks the same question an
+ * upload does.
+ *
+ * It used to ask nothing at all, and the watcher creates directories *before*
+ * it uploads anything -- so with a mistyped `remotePath` the first thing to
+ * happen on the server was a `mkdir` nobody had approved.
+ */
 
 export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?: boolean }>({
   name: 'createRemoteFile',
   async handle() {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
+
+    await ensureRemotePathApproved(destinationOf(this), remoteFs);
 
     const promise = fileOperations.createFile(remoteFsPath, remoteFs);
 
@@ -46,6 +58,8 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
   async handle() {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
+
+    await ensureRemotePathApproved(destinationOf(this), remoteFs);
 
     const promise = fileOperations.createDir(remoteFsPath, remoteFs);
 

@@ -12,8 +12,15 @@ import {
   findAllFileService,
   disposeFileService,
 } from './serviceManager';
-import { reportError, isValidFile, isConfigFile, isInWorkspace } from '../helper';
+import {
+  reportError,
+  isValidFile,
+  isConfigFile,
+  isInWorkspace,
+  DestinationDeclinedError,
+} from '../helper';
 import { downloadFile, uploadFile } from '../fileHandlers';
+import { claimUpload, type UploadOutcome } from './watch/watcherService';
 
 /**
  * Reacts to documents being saved and opened.
@@ -66,11 +73,26 @@ async function handleFileSave(uri: vscode.Uri): Promise<void> {
   }
 
   logger.info(`[file-save] ${resolved.fsPath}`);
+
+  // The same save also reaches the watcher as a file-system event. Claiming the
+  // upload lets its gate recognise these bytes as already on their way; without
+  // it the file goes twice whenever the transfer outlasts the batching window.
+  const claim = await claimUpload(resolved.fsPath);
+  let outcome: UploadOutcome = 'failed';
   try {
     await uploadFile(resolved);
+    outcome = 'uploaded';
   } catch (error) {
-    logger.error(error, `upload ${resolved.fsPath}`);
-    app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+    if (error instanceof DestinationDeclinedError) {
+      // The user was asked where this was going and said no. Nothing failed,
+      // so the status bar is left alone and the guard's own log line stands.
+      outcome = 'declined';
+    } else {
+      logger.error(error, `upload ${resolved.fsPath}`);
+      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+    }
+  } finally {
+    claim.release(outcome);
   }
 }
 

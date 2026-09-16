@@ -29,6 +29,7 @@ function gate(over: Partial<GateInput> = {}): Decision {
     facts: file(),
     prior: record(),
     selfWrite: false,
+    uploadInFlight: false,
     policy: uploading,
     ...over,
   });
@@ -150,6 +151,53 @@ describe('scenario 8: feedback from our own download', () => {
       action: 'skip',
       reason: 'self-write',
     });
+  });
+});
+
+describe('the same bytes already being uploaded', () => {
+  // `uploadOnSave` and the watcher both answer one save. The upload records the
+  // file only when it finishes, so an event examined before then finds a stale
+  // record and sends everything a second time.
+  const changed = file({ mtimeMs: 2_000_000, size: 120 });
+
+  test('without the claim the gate would send it again', () => {
+    expect(gate({ facts: changed })).toEqual({ action: 'hash-required' });
+  });
+
+  test('with the claim it is dropped, and the file is not even read', () => {
+    expect(gate({ facts: changed, uploadInFlight: true })).toEqual({
+      action: 'skip',
+      reason: 'upload-in-flight',
+    });
+  });
+
+  test('a file never seen before is dropped too, rather than uploaded as new', () => {
+    expect(gate({ facts: changed, prior: undefined, uploadInFlight: true })).toEqual({
+      action: 'skip',
+      reason: 'upload-in-flight',
+    });
+  });
+
+  test('ignore rules still come first', () => {
+    expect(gate({ facts: changed, ignored: true, uploadInFlight: true })).toEqual({
+      action: 'skip',
+      reason: 'ignored',
+    });
+  });
+
+  test('a deletion is not held back by an upload of the same path', () => {
+    // Nothing on disk can match the claimed facts once the file is gone, so the
+    // caller cannot report it as in flight -- but the ordering is asserted here
+    // rather than left to that.
+    const deleting: WatchPolicy = { autoUpload: true, autoDelete: true, followSymlinks: false };
+    expect(
+      gate({
+        kind: 'delete',
+        facts: file({ type: 'missing', size: 0, mtimeMs: 0 }),
+        uploadInFlight: true,
+        policy: deleting,
+      })
+    ).toEqual({ action: 'delete-remote' });
   });
 });
 

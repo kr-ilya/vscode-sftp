@@ -17,8 +17,25 @@ export class SkippedTargetError extends Error {
   }
 }
 
+/**
+ * The user was asked whether to write to a destination and said no.
+ *
+ * Thrown rather than reported as a quiet `return`, which made a declined upload
+ * indistinguishable from a completed one: the watcher took it for success and
+ * recorded the file as being on the server, so it stopped offering to send it.
+ *
+ * Like a skipped target this is not a failure -- the user got what they asked
+ * for -- so it reaches the log and not a notification.
+ */
+export class DestinationDeclinedError extends Error {
+  constructor(readonly destination: string) {
+    super(`Upload to ${destination} was declined`);
+    this.name = 'DestinationDeclinedError';
+  }
+}
+
 export function reportError(error: unknown, context?: string): void {
-  if (error instanceof SkippedTargetError) {
+  if (error instanceof SkippedTargetError || error instanceof DestinationDeclinedError) {
     logger.debug(error.message, context);
     return;
   }

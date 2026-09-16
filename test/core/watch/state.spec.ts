@@ -3,7 +3,7 @@ import {
   createStateStore,
   serializeState,
   deserializeState,
-  factsMatchRecord,
+  factsMatch,
   recordFrom,
   STATE_FORMAT_VERSION,
   type StateRecord,
@@ -123,9 +123,9 @@ describe('what actually goes on disk', () => {
   });
 });
 
-describe('factsMatchRecord', () => {
+describe('factsMatch', () => {
   test('matches on identical facts', () => {
-    expect(factsMatchRecord(facts(), record())).toBe(true);
+    expect(factsMatch(facts(), record())).toBe(true);
   });
 
   test.each([
@@ -134,20 +134,20 @@ describe('factsMatchRecord', () => {
     ['inode', { ino: 9 }],
     ['device', { dev: 9 }],
   ])('a differing %s is a mismatch', (_label, over) => {
-    expect(factsMatchRecord(facts(over), record())).toBe(false);
+    expect(factsMatch(facts(over), record())).toBe(false);
   });
 
   test('identity absent on either side is not a mismatch', () => {
     // A file system that does not report a usable inode must not force every
     // file to be hashed on every event.
-    expect(factsMatchRecord(facts({ ino: undefined }), record())).toBe(true);
-    expect(factsMatchRecord(facts(), record({ ino: undefined }))).toBe(true);
+    expect(factsMatch(facts({ ino: undefined }), record())).toBe(true);
+    expect(factsMatch(facts(), record({ ino: undefined }))).toBe(true);
   });
 
   test('millisecond precision is kept', () => {
     // Comparing at whole seconds -- as one fork does -- makes an edit made
     // within the same second indistinguishable from no edit at all.
-    expect(factsMatchRecord(facts({ mtimeMs: 100.5 }), record({ mtimeMs: 100 }))).toBe(false);
+    expect(factsMatch(facts({ mtimeMs: 100.5 }), record({ mtimeMs: 100 }))).toBe(false);
   });
 });
 

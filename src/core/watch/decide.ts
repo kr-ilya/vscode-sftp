@@ -1,5 +1,5 @@
 import type { EntryFacts, StateRecord, ContentDigest } from './state';
-import { factsMatchRecord } from './state';
+import { factsMatch } from './state';
 import type { WatchPolicy } from './policy';
 
 /**
@@ -27,6 +27,11 @@ export interface GateInput {
   prior: StateRecord | undefined;
   /** Whether this event is explained by a write the extension made itself. */
   selfWrite: boolean;
+  /**
+   * Whether the bytes now on disk are already being uploaded, by a transfer
+   * that has not finished recording them yet.
+   */
+  uploadInFlight: boolean;
   /** Present only on the second pass, once the caller has hashed the file. */
   content?: ContentDigest;
   policy: WatchPolicy;
@@ -49,6 +54,7 @@ export type SkipReason =
   | 'auto-upload-disabled'
   | 'auto-delete-disabled'
   | 'self-write'
+  | 'upload-in-flight'
   | 'unchanged-metadata'
   | 'directory-change'
   | 'symlink'
@@ -56,7 +62,7 @@ export type SkipReason =
   | 'vanished';
 
 export function decide(input: GateInput): Decision {
-  const { kind, ignored, facts, prior, selfWrite, content, policy } = input;
+  const { kind, ignored, facts, prior, selfWrite, uploadInFlight, content, policy } = input;
 
   // Gate 1: ignore rules, applied before anything reads the disk or the network.
   if (ignored) return { action: 'skip', reason: 'ignored' };
@@ -97,6 +103,14 @@ export function decide(input: GateInput): Decision {
   // Gate 3: is this our own write coming back at us?
   if (selfWrite) return { action: 'skip', reason: 'self-write' };
 
+  // Gate 3b: are these exact bytes already being sent? `uploadOnSave` and the
+  // watcher both answer the same save, and the tracker does not learn about the
+  // upload until it finishes -- so without this the file goes twice whenever
+  // the transfer is slower than the batching window. Nothing is recorded here:
+  // the transfer records it when it succeeds, and if it fails the file stays
+  // unknown so the next event tries again.
+  if (uploadInFlight) return { action: 'skip', reason: 'upload-in-flight' };
+
   // Nothing known about this path: it is genuinely new, so send it. An empty
   // store does not mean "upload everything" -- it is seeded from disk on first
   // use, so by the time events flow, known files have records.
@@ -108,7 +122,7 @@ export function decide(input: GateInput): Decision {
   // noise -- chmod and utimes (which surface as IN_ATTRIB on Linux and as a
   // LAST_WRITE notification on Windows), repeated events for one save, and
   // whole-tree re-emission after the watcher restarts.
-  if (factsMatchRecord(facts, prior)) {
+  if (factsMatch(facts, prior)) {
     return { action: 'skip', reason: 'unchanged-metadata' };
   }
 

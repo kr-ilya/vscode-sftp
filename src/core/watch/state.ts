@@ -9,9 +9,8 @@ import { HASH_ALGORITHM } from './policy';
  * a change. The store is what makes the metadata gate meaningful.
  */
 
-/** Facts obtainable from a single `lstat`, plus the entry's kind. */
-export interface EntryFacts {
-  type: 'file' | 'directory' | 'symlink' | 'other' | 'missing';
+/** Everything about an entry that can be compared without reading it. */
+export interface CheapFacts {
   size: number;
   mtimeMs: number;
   /**
@@ -23,17 +22,18 @@ export interface EntryFacts {
   dev?: number;
 }
 
+/** Facts obtainable from a single `lstat`, plus the entry's kind. */
+export interface EntryFacts extends CheapFacts {
+  type: 'file' | 'directory' | 'symlink' | 'other' | 'missing';
+}
+
 export interface ContentDigest {
   algorithm: string;
   hash: string;
 }
 
 /** What we last knew to be on the server for a given path. */
-export interface StateRecord {
-  size: number;
-  mtimeMs: number;
-  ino?: number;
-  dev?: number;
+export interface StateRecord extends CheapFacts {
   algorithm: string;
   hash: string;
   /** When this record was written, epoch milliseconds. */
@@ -199,18 +199,14 @@ function isStoredRecord(value: unknown): value is StoredRecord {
   );
 }
 
-/** Whether the cheap facts match what was recorded, with no disk read. */
-export function factsMatchRecord(facts: EntryFacts, record: StateRecord): boolean {
-  if (facts.size !== record.size) return false;
-  if (facts.mtimeMs !== record.mtimeMs) return false;
+/** Whether two sets of cheap facts describe the same state of a file. */
+export function factsMatch(a: CheapFacts, b: CheapFacts): boolean {
+  if (a.size !== b.size) return false;
+  if (a.mtimeMs !== b.mtimeMs) return false;
   // Compare identity only when both sides have it; some file systems and some
   // platforms report zero or omit it entirely.
-  if (facts.ino !== undefined && record.ino !== undefined && facts.ino !== record.ino) {
-    return false;
-  }
-  if (facts.dev !== undefined && record.dev !== undefined && facts.dev !== record.dev) {
-    return false;
-  }
+  if (a.ino !== undefined && b.ino !== undefined && a.ino !== b.ino) return false;
+  if (a.dev !== undefined && b.dev !== undefined && a.dev !== b.dev) return false;
   return true;
 }
 

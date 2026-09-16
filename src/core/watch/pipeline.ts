@@ -2,8 +2,9 @@ import { decide, type Decision } from './decide';
 import type { PendingEvent } from './batch';
 import type { PathKey, PathKeyer } from './pathkey';
 import type { StateStore, EntryFacts, ContentDigest } from './state';
-import { recordFrom, factsMatchRecord } from './state';
+import { recordFrom, factsMatch } from './state';
 import type { ExpectationRegistry } from './expectations';
+import type { UploadClaims } from './uploadClaims';
 import type { WatchPolicy } from './policy';
 import { countDecision, type TraceEntry, type WatchCounters } from './diagnostics';
 
@@ -32,6 +33,8 @@ export interface PipelineDeps {
   concurrency?: number;
   store: StateStore;
   expectations: ExpectationRegistry;
+  /** Uploads already under way, so the same bytes are not sent twice. */
+  claims: UploadClaims;
   keyer: PathKeyer;
   policy: WatchPolicy;
   isIgnored(path: string): boolean;
@@ -76,6 +79,7 @@ export async function processBatch(
     const selfWrite = ignored
       ? false
       : deps.expectations.consume(event.path, facts).matched;
+    const uploadInFlight = ignored ? false : deps.claims.isInFlight(event.path, facts);
 
     let hashed = false;
     let decision = decide({
@@ -84,6 +88,7 @@ export async function processBatch(
       facts,
       prior,
       selfWrite,
+      uploadInFlight,
       policy: deps.policy,
     });
 
@@ -106,6 +111,7 @@ export async function processBatch(
             facts,
             prior,
             selfWrite,
+            uploadInFlight,
             content: digest,
             policy: deps.policy,
           })
@@ -175,7 +181,7 @@ export async function recordSynced(
   // same transfer -- the transfer itself, and this pipeline after the upload it
   // asked for returns.
   const existing = deps.store.get(key);
-  if (existing && factsMatchRecord(facts, existing)) return;
+  if (existing && factsMatch(facts, existing)) return;
 
   try {
     const digest = await deps.readDigest(path);
