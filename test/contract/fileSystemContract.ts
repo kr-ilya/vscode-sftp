@@ -222,6 +222,38 @@ export function runFileSystemContract(
     }, timeoutMs);
   });
 
+  describe('what a failure says', () => {
+    // A transport reports at its narrowest: SFTP's catch-all status arrives as
+    // the single word "Failure", and FTP's as a three-digit code. Neither says
+    // which path it was about, and the stack is entirely inside the transport
+    // library -- which is how a real report came in reading only
+    // "Error: Failure", naming the folder the command was given rather than
+    // anything that failed.
+    test('the path it was about', async () => {
+      const missing = join(root, 'no-such-directory', 'deep.txt');
+
+      await expect(fs.lstat(missing)).rejects.toThrow(/deep\.txt/);
+    }, timeoutMs);
+
+    test('the path, when it is the server that refuses', async () => {
+      // Through the transport's own command rather than a local shortcut: on
+      // FTP this is a bare `550`, and on SFTP a bare `No such file`.
+      await expect(fs.rmdir(join(root, 'never-existed'), false)).rejects.toThrow(
+        /never-existed/
+      );
+    }, timeoutMs);
+
+    test('and what was being attempted', async () => {
+      const file = join(root, 'not-a-directory.txt');
+      await fs.put(text('x'), file);
+
+      // Creating a directory where a file already sits: every implementation
+      // refuses, and the refusals read differently, so the operation has to be
+      // named rather than inferred from the wording.
+      await expect(fs.ensureDir(join(file, 'child'))).rejects.toThrow(/mkdir|directory/i);
+    }, timeoutMs);
+  });
+
   describe('capabilities', () => {
     test('symbolic links: supported, or refused -- never silently ignored', async () => {
       const link = join(root, 'link');

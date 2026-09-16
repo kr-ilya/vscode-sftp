@@ -7,6 +7,7 @@ import {
   toFileType,
 } from './ftpMapping';
 import logger from '../logger';
+import { remoteFailure, underlying } from './remoteError';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client';
@@ -44,9 +45,22 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return (this.getClient() as FTPClient).getFsClient();
   }
 
-  /** Runs one FTP command with the control connection to itself. */
-  private exclusive<T>(task: () => Promise<T>): Promise<T> {
-    return this.queue.run(task);
+  /**
+   * Runs one FTP command with the control connection to itself.
+   *
+   * Also the single place every command's failure passes through, so each one
+   * can say what it was doing and to which path. A bare reply code -- `550`,
+   * or SFTP's one-word `Failure` on the other transport -- is not something a
+   * user can act on without that.
+   */
+  private exclusive<T>(operation: string, target: string, task: () => Promise<T>): Promise<T> {
+    return this.queue.run(async () => {
+      try {
+        return await task();
+      } catch (error) {
+        throw remoteFailure(operation, target, error);
+      }
+    });
   }
 
   _createClient(option): FTPClient {
@@ -109,7 +123,9 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
     const stamp = formatMfmtTimestamp(new Date(this.toRemoteTimeInSecnonds(mtime) * 1000));
     try {
-      await this.exclusive(() => this.ftp.send(`MFMT ${stamp} ${fd.path}`));
+      await this.exclusive('set times on', fd.path, () =>
+        this.ftp.send(`MFMT ${stamp} ${fd.path}`)
+      );
     } catch {
       logger.info('[ftp] server does not support MFMT; timestamps will not be preserved');
       this.supportsMfmt = false;
@@ -129,11 +145,11 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
     // Deliberately not awaited: the caller needs the stream now, and the
     // transfer completes as it is consumed.
-    void this.exclusive(async () => {
+    void this.exclusive('download', path, async () => {
       try {
         await this.ftp.downloadTo(through as Writable, path);
       } catch (error) {
-        through.destroy(error as Error);
+        through.destroy(remoteFailure('download', path, error) as Error);
       }
     });
 
@@ -141,7 +157,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async put(input: Readable, path: string, _option?: FileOption): Promise<void> {
-    return this.exclusive(async () => {
+    return this.exclusive('upload', path, async () => {
       try {
         await this.ftp.uploadFrom(input, path);
       } catch (error) {
@@ -154,11 +170,13 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
   async chmod(path: string, mode: number): Promise<void> {
     // Not part of FTP itself; SITE CHMOD is a widely implemented extension.
-    await this.exclusive(() => this.ftp.send(`SITE CHMOD ${mode.toString(8)} ${path}`));
+    await this.exclusive('chmod', path, () =>
+      this.ftp.send(`SITE CHMOD ${mode.toString(8)} ${path}`)
+    );
   }
 
   async mkdir(dir: string): Promise<void> {
-    await this.exclusive(() => this.ftp.send(`MKD ${dir}`));
+    await this.exclusive('mkdir', dir, () => this.ftp.send(`MKD ${dir}`));
   }
 
   /**
@@ -197,7 +215,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async list(dir: string, _option?): Promise<FileEntry[]> {
-    const entries = await this.exclusive(() => this.ftp.list(dir));
+    const entries = await this.exclusive('list', dir, () => this.ftp.list(dir));
 
     return entries
       .filter(item => item.name && item.name !== '.' && item.name !== '..')
@@ -223,19 +241,21 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async unlink(path: string): Promise<void> {
-    await this.exclusive(() => this.ftp.remove(path));
+    await this.exclusive('unlink', path, () => this.ftp.remove(path));
   }
 
   async rmdir(path: string, recursive: boolean): Promise<void> {
     if (recursive) {
-      await this.exclusive(() => this.ftp.removeDir(path));
+      await this.exclusive('rmdir', path, () => this.ftp.removeDir(path));
       return;
     }
-    await this.exclusive(() => this.ftp.send(`RMD ${path}`));
+    await this.exclusive('rmdir', path, () => this.ftp.send(`RMD ${path}`));
   }
 
   async rename(srcPath: string, destPath: string): Promise<void> {
-    await this.exclusive(() => this.ftp.rename(srcPath, destPath));
+    await this.exclusive('rename', `${srcPath} -> ${destPath}`, () =>
+      this.ftp.rename(srcPath, destPath)
+    );
   }
 
   /**
@@ -256,6 +276,9 @@ function enoent(path: string): NodeJS.ErrnoException {
 
 /** Exposed for the error-mapping tests. */
 export function isNotFound(error: unknown): boolean {
-  if (error instanceof FTPError) return error.code === 550;
-  return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
+  // Through the wrapper as well: what a caller catches now describes the
+  // operation, and carries the transport's own error underneath.
+  const original = underlying(error);
+  if (original instanceof FTPError) return original.code === 550;
+  return (original as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
