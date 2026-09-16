@@ -2,7 +2,7 @@
   "name": "syncx",
   "displayName": "SyncX – SFTP & FTP Sync",
   "description": "Sync files with a remote server over SFTP, FTP or FTPS.",
-  "version": "26.9.0",
+  "version": "26.9.1",
   "publisher": "kr-ilya",
   "author": "kr-ilya (https://github.com/kr-ilya)",
   "engines": {

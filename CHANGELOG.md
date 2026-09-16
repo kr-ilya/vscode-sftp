@@ -5,6 +5,29 @@ Versions are `YY.M.N`: the year, the month, and which release that month it is.
 of October. The month is never zero-padded -- `26.09.0` is not a valid version
 and cannot be published.
 
+## 26.9.1 — 2026-09-16
+
+### Fixed
+
+- **Uploading a folder could fail with a bare `Error: Failure`.** A folder walk transfers its subtrees in parallel, and SFTP `ensureDir` retried `mkdir` unguarded after creating a missing parent — so when another transfer created the same directory in between, the loser was refused by a directory that existed by then. Reachable whenever several transfers build the same missing chain at once, which is the normal case for a first upload into an empty path. Reported from live use.
+- **A failed transfer left a descriptor open.** `Promise.all` abandons the other promise on the first rejection, so a source that failed left the target's handle open, and on Windows the staging file could then not be removed. Both handles are opened as a pair and closed before anything is unlinked.
+- **One save could be uploaded twice.** `uploadOnSave` and a watcher answer the same save by different routes, and the tracker only learns about an upload when it finishes — so the file went twice whenever the transfer outlasted the 400ms batching window, which on a slow link is every save. An upload now claims the bytes it is sending, and the watcher recognises them as already on their way.
+- **Declining a destination looked like a completed upload.** The prompt returned quietly, which the watcher could not tell from a finished transfer: it recorded the file as being on the server and then dropped every later event for it, so a file nobody had sent was treated as sent.
+- **Creating a directory did not ask about the destination.** The watcher creates directories before it uploads anything, so with a mistyped `remotePath` the first thing written was a `mkdir` nobody had approved. Both create commands now ask — and a batch starting several transfers at once asks one question rather than one per file in flight.
+
+### Diagnostics
+
+- **A failure names the operation and the remote path.** `mkdir /srv/www/site: Failure` rather than `Failure` on its own, on SFTP and FTP alike. A catch-all status arriving through the transport's own stack said nothing about which request had been refused.
+
+### Performance
+
+- **A batch is uploaded in parallel instead of one file at a time.** Directories still run shallowest first and deletions deepest first, because those orders are load-bearing; uploads constrain nothing and now run to the `concurrency` budget. Measured against a real sshd over loopback, 60 files: 253 ms sequential, 80 ms at `concurrency: 4`.
+- **The change-detection state file is 14% smaller.** It is rewritten whole whenever anything changes, so its size is a cost paid over and over rather than once.
+
+### Documentation
+
+- The readme was restructured: a shorter first screen, features as cards, the comparison with the parent fork cut to what matters, and configuration examples moved out of the quick start. Local and remote are used consistently throughout. Both the English and Russian versions.
+
 ## 26.9.0 — 2026-09-15
 
 First release of **SyncX**, forked from [Natizyskunk/vscode-sftp 1.16.3](https://github.com/Natizyskunk/vscode-sftp). Everything below is a difference from that version.
