@@ -32,7 +32,11 @@
     "onCommand:syncx.config",
     "workspaceContains:.vscode/sftp.json"
   ],
-  "icon": "resources/icon.png",
+  "icon": "resources/icons/syncx-icon-512.png",
+  "galleryBanner": {
+    "color": "#161A20",
+    "theme": "dark"
+  },
   "main": "./dist/extension",
   "contributes": {
     "viewsContainers": {
@@ -40,7 +44,7 @@
         {
           "id": "syncx",
           "title": "SyncX",
-          "icon": "resources/remote-explorer.svg"
+          "icon": "resources/icons/syncx-activitybar.svg"
         }
       ]
     },

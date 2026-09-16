@@ -10,5 +10,12 @@
 !README.md
 !CHANGELOG.md
 !LICENSE
-!resources/**
+# Only what the extension itself draws. The rest of resources/icons -- the
+# light plate, the 128px copy, the plain marks -- exists for the readme and is
+# served from the repository, so shipping it would be dead weight in every
+# install.
+!resources/dark/**
+!resources/light/**
+!resources/icons/syncx-icon-512.png
+!resources/icons/syncx-activitybar.svg
 !schema/**

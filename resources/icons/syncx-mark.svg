@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="SyncX">
+  <title>SyncX</title>
+  <g fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 32 L57 64 L32 96" stroke="#2BB3A0"/>
+    <path d="M96 32 L71 64 L96 96" stroke="#E8814A"/>
+  </g>
+</svg>

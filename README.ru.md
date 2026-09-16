@@ -1,5 +1,9 @@
 [English](README.md) · **Русский**
 
+<p align="center">
+  <img src="resources/icons/syncx-icon-128.png" width="96" height="96" alt="">
+</p>
+
 # SyncX — SFTP & FTP Sync
 
 **Держит локальную папку и удалённую в согласии, не выходя из VS Code.**
