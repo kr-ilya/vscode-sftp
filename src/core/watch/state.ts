@@ -54,7 +54,7 @@ export interface StateStore {
  * empty store means "seed from disk and upload nothing" rather than "upload
  * everything".
  */
-export const STATE_FORMAT_VERSION = 2;
+export const STATE_FORMAT_VERSION = 3;
 
 /**
  * One record as it is written to disk.
@@ -87,9 +87,45 @@ export interface SerializedState {
   version: number;
   /** Which service/profile this state belongs to; see the loader. */
   scope: string;
+  /**
+   * The watched root every key in this file is relative to.
+   *
+   * Hoisted for the same reason as `algorithm`: it is the same value in every
+   * key, the file holds one entry per file in the workspace, and it is
+   * rewritten whole whenever anything changes -- so a prefix repeated thousands
+   * of times is a cost paid over and over. On a 10,000-file tree it is 12% of
+   * the file.
+   */
+  base: string;
   /** The digest algorithm every record in this file was written with. */
   algorithm: string;
   entries: Record<string, StoredRecord>;
+}
+
+/**
+ * Whether a stored key is a whole path rather than one relative to the base.
+ *
+ * Keys are normalised absolute paths, so anything that does not look absolute
+ * was written relative. That keeps the two distinguishable without a flag, and
+ * lets a key outside the base survive a round trip rather than being silently
+ * rebased onto it.
+ */
+function isWholePath(key: string): boolean {
+  return key.startsWith('/') || /^[a-zA-Z]:\//.test(key);
+}
+
+/** The key as written to disk: relative to `base` where it lies under it. */
+function toStoredKey(key: PathKey, base: string): string {
+  if (!base) return key;
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+}
+
+/** The inverse, for whatever `toStoredKey` produced. */
+function fromStoredKey(stored: string, base: string): PathKey {
+  if (!base || isWholePath(stored)) return stored as PathKey;
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  return `${prefix}${stored}` as PathKey;
 }
 
 export function createStateStore(initial?: Iterable<[PathKey, StateRecord]>): StateStore {
@@ -105,7 +141,16 @@ export function createStateStore(initial?: Iterable<[PathKey, StateRecord]>): St
   };
 }
 
-export function serializeState(scope: string, store: StateStore): SerializedState {
+/**
+ * @param base the watched root, already normalised by the same path keyer the
+ * store's keys were made with -- otherwise no key matches it and every path is
+ * written whole.
+ */
+export function serializeState(
+  scope: string,
+  store: StateStore,
+  base: string
+): SerializedState {
   const entries: Record<string, StoredRecord> = {};
   let algorithm = HASH_ALGORITHM;
 
@@ -115,7 +160,7 @@ export function serializeState(scope: string, store: StateStore): SerializedStat
     // Every record is written by the same code with the same algorithm; the
     // last one seen is the file's.
     algorithm = record.algorithm;
-    entries[key] = {
+    entries[toStoredKey(key, base)] = {
       s: record.size,
       m: record.mtimeMs,
       i: record.ino,
@@ -125,7 +170,7 @@ export function serializeState(scope: string, store: StateStore): SerializedStat
     };
   }
 
-  return { version: STATE_FORMAT_VERSION, scope, algorithm, entries };
+  return { version: STATE_FORMAT_VERSION, scope, base, algorithm, entries };
 }
 
 /**
@@ -138,7 +183,8 @@ export function serializeState(scope: string, store: StateStore): SerializedStat
  */
 export function deserializeState(
   scope: string,
-  raw: unknown
+  raw: unknown,
+  base: string
 ): { store: StateStore; accepted: boolean; reason?: string } {
   if (!raw || typeof raw !== 'object') {
     return { store: createStateStore(), accepted: false, reason: 'not an object' };
@@ -159,6 +205,16 @@ export function deserializeState(
       reason: `scope "${String(candidate.scope)}" != "${scope}"`,
     };
   }
+  // A file written for another root cannot be rebased onto this one: its keys
+  // would name files that do not exist here, and the gate would then treat
+  // every real file as new.
+  if (candidate.base !== base) {
+    return {
+      store: createStateStore(),
+      accepted: false,
+      reason: `base "${String(candidate.base)}" != "${base}"`,
+    };
+  }
   if (!candidate.entries || typeof candidate.entries !== 'object') {
     return { store: createStateStore(), accepted: false, reason: 'no entries' };
   }
@@ -172,7 +228,7 @@ export function deserializeState(
   for (const [key, value] of Object.entries(candidate.entries)) {
     if (isStoredRecord(value)) {
       pairs.push([
-        key as PathKey,
+        fromStoredKey(key, base),
         {
           size: value.s,
           mtimeMs: value.m,

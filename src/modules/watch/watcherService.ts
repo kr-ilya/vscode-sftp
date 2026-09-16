@@ -81,7 +81,8 @@ async function createTree(
     persistent = await loadPersistentState(
       storageDir ?? vscode.Uri.file(watcherBase),
       watcherBase,
-      context.scope
+      context.scope,
+      keyer(watcherBase)
     );
   } catch (error) {
     logger.warn('[watch] state unavailable; running without persistence', error);
