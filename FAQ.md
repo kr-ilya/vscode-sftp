@@ -61,11 +61,13 @@ In VS Code's SecretStorage, not in `.vscode/sftp.json` — so the file stays saf
 
 ## It asks me to confirm the destination
 
-Once per destination, before the first transfer to it, with a listing of what is already in that directory.
+Once per destination, before the first write of any kind to it — an upload, or a directory created for one — with a listing of what is already in that directory.
 
 A typo in `remotePath` is not visible in the configuration file — it is a perfectly ordinary path, just not yours — and the first upload is what makes it permanent. Seeing `bin, boot, dev, etc` in that listing is a clearer signal than any warning.
 
-**SyncX: Reset Confirmed Upload Destinations** makes it ask again.
+**Declining sends nothing and records nothing.** Nothing is written to the server, no approval is stored, and the file is *not* marked as being on the server — so the next transfer to that destination asks the question again.
+
+**SyncX: Reset Confirmed Upload Destinations** makes it ask again after you have agreed.
 
 ## Everything uploads twice
 
@@ -75,7 +77,9 @@ Disable one of them for that workspace: Extensions view → the extension → *D
 
 ## Error: Failure
 
-A generic message from the server: the SFTP server sends it when a syscall fails and it has nothing more specific to say. Enabling debug logging on the server side and repeating the transfer usually shows the real reason.
+A generic message from the server: the SFTP server sends it when a syscall fails and it has nothing more specific to say.
+
+SyncX puts the operation and the remote path in front of it, so the line reads `mkdir /srv/www/site: Failure` rather than `Failure` on its own — which is usually enough to tell which step failed. Enabling debug logging on the server side and repeating the transfer shows the rest.
 
 Two things are worth trying first:
 
@@ -209,7 +213,7 @@ Upload as files change, and mirror deletions:
 }
 ```
 
-Set `uploadOnSave` to `false` when the watcher covers `**/*`, or a saved file is queued twice.
+With a watcher over `**/*`, `uploadOnSave` is redundant -- the save reaches the watcher as a file-system event anyway -- but it is no longer harmful to leave on: an upload already under way is recognised as such, and the file is not sent twice.
 
 This works with git too: checking out a branch, or reverting, updates the server to match — and only the files that actually differ are sent.
 

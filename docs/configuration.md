@@ -411,7 +411,7 @@ Glob patterns that are watched and when edited outside of the VSCode editor are 
 
 | 💡 Important |
 | :--- |
-| *Set* `uploadOnSave` *to* `false` *when you watch everything.*| 
+| *Watching everything makes* `uploadOnSave` *redundant: a save arrives as a file-system event too. Leaving both on is safe -- a file already being uploaded is not sent a second time.*|
 
 | Key | Value |
 | --- | --- |
