@@ -5,6 +5,52 @@ Versions are `YY.M.N`: the year, the month, and which release that month it is.
 of October. The month is never zero-padded -- `26.09.0` is not a valid version
 and cannot be published.
 
+## 26.9.2 — 2026-09-17
+
+### Added
+
+- **A symbolic link to a directory opens like a directory.** A listing reports a link as a link, and nothing could ask what was on the other end, so every link was drawn as a file: no way to expand one, and clicking it tried to open a directory as a document. Only links cost the extra round trip. Asked for since 2018 in both projects this one descends from.
+- **A rename is carried out on the server** instead of the file being uploaded again under its new name. The editor reports a rename as a deletion and a creation, and acting on that literally sent the whole file a second time — and with `autoDelete` on, the deletion arrived afterwards and undid the move. Mirrored only where the extension is already mirroring by itself, with `uploadOnSave` or `watcher.autoUpload`.
+- **`encoding` for FTP** — `"utf8"`, `"latin1"` or `"ascii"`. `basic-ftp` assumes UTF-8, which is right for a modern server and wrong for an older one: names come back looking like damage, and the paths built from them address nothing, so every operation on them fails for a reason that has nothing to do with the file.
+
+### Security
+
+- **Credentials are masked wherever they appear in the log,** not only at the top level. The configuration is written to the output channel on activation and on every save of `sftp.json`, and the masking walked one level — so every jump host in `hop` and every environment in `profiles` went out in plain text. That output is what people attach to bug reports.
+- **`.vscode/sftp.json` is never uploaded,** whatever `ignore` says. `ignore` replaces the default list rather than extending it, so a project that writes its own and does not think to include `.vscode` published its own connection settings: host, user, remote path, and a password if one was written into the file rather than kept in SecretStorage.
+- **Two different servers can no longer share one connection.** The pooling key was the option values concatenated — no keys, no separator, every nested object rendered as `[object Object]` — so two configurations differing only in `hop` had the same identity, and one of them wrote its files through the other's tunnel.
+
+### Fixed
+
+- **Uploading a folder could finish without saying so.** The files reached the server; the command never returned, the spinner kept turning, the remote explorer was never refreshed, and Cancel All Transfers could no longer find anything to cancel. A batch is filled while its tasks are already running, and one whose outstanding set momentarily emptied was retired early, leaving everything queued afterwards with no owner. Reached every time on FTP.
+- **Switching a profile or saving `sftp.json` could leave a second watcher running.** Building a tree is asynchronous and asking for one is not, so two requests in quick succession overlapped, and the first tree stayed alive for the rest of the session — answering every event a second time, with a store of its own.
+- **What the watcher had recorded was lost on every save of `sftp.json`.** The state file was named with a counter over the life of the process, so each reload renamed it: the whole tree was hashed afresh on the next event, and the old file was left in global storage for good. The name now comes from where the files go, and from the profile, so a reload changes nothing and repointing `remotePath` changes it.
+- **A rename that only corrects the case of a name** now reaches the server. The old path was resolved against the disk to recover its real spelling, and on a case-insensitive file system the old name still finds the file — spelled the new way — so both sides came out identical and the server was asked to move a file onto itself. A rename made outside the editor still cannot be seen when only the case changes.
+- `dispose()` no longer throws for the configurations most likely to be disposed — one being edited, or one whose profile has not been chosen — which used to abort the loop reloading every service in the workspace.
+- The remote explorer is built before the services, so a configuration this extension cannot resolve no longer reports a TypeError on top of the real error.
+- A failed transfer no longer leaves its source open. On a download that is a handle on the server, counted against every later transfer by `limitOpenFilesOnRemote`.
+- "Is this path inside that one?" is answered by segment rather than by string prefix, in all three places that asked it.
+
+### Performance
+
+- **Finding the files to transfer is held to the same `concurrency` budget as transferring them.** A `mkdir` and a listing per directory, recursively, with a plain `Promise.all` at every level, ran as wide as the tree was: eighty concurrent operations against a budget of two. On SFTP that is what trips `MaxSessions`, and it reads as an unreliable network rather than a setting that was never applied.
+- **The change-detection state file is 12% smaller** — the workspace path was repeated in every key and is now written once. Serialising costs a few milliseconds more rather than fewer: the trade is smaller on disk for slightly more CPU, on a write that happens at most once every two seconds.
+
+### Appearance
+
+- **A new icon set.** The extension's icon and the activity bar icon came from the fork's parent; both are replaced by a mark of this project's own, and the button icons are redrawn to match — one geometry in two colours, rather than two different drawings.
+
+### Documentation
+
+- The changelog now carries this extension's own releases and nothing else. The history of the extension this one forks is kept in [docs/history-upstream.md](docs/history-upstream.md).
+- The screenshot in the configuration reference is a file in this repository, showing this extension's own commands, rather than an image uploaded to a comment on the parent fork.
+- Five files that came with the fork and belong to its parent are gone, among them a Sponsor button pointing at the upstream author's donation addresses. The bug report template now asks for `syncx.debug` and the change-detection channel instead of settings that do not exist here.
+
+### Under the hood
+
+- `moduleResolution: node` is deprecated, and the editor's own TypeScript reports it as an error while ours does not — which surfaced as a build-errors dialog on every F5. The project is on `module: preserve`, which describes what actually happens here: types checked by `tsc --noEmit`, code emitted by esbuild. The emitted format is unchanged.
+- `scripts/test.sh` runs the suites and minds the containers they need: `npm run test:menu`, or `npm run test:all`.
+- A test that no source file contains a NUL byte. Written as a literal byte it compiles and runs and is invisible in an editor, but every tool that samples a file to decide whether it is text then treats the module as binary. It happened three times here.
+
 ## 26.9.1 — 2026-09-16
 
 ### Fixed
