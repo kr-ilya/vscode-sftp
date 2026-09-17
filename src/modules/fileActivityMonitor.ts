@@ -4,7 +4,12 @@ import logger from '../logger';
 import app from '../app';
 import { fileContentCache } from '../core/fileContentCache';
 import StatusBarItem from '../ui/statusBarItem';
-import { onDidOpenTextDocument, onDidSaveTextDocument, showConfirmMessage } from '../host';
+import {
+  onDidOpenTextDocument,
+  onDidRenameFiles,
+  onDidSaveTextDocument,
+  showConfirmMessage,
+} from '../host';
 import { readConfigsFromFile } from './config';
 import {
   createFileService,
@@ -19,8 +24,8 @@ import {
   isInWorkspace,
   DestinationDeclinedError,
 } from '../helper';
-import { downloadFile, uploadFile } from '../fileHandlers';
-import { claimUpload, type UploadOutcome } from './watch/watcherService';
+import { downloadFile, renameRemote, uploadFile } from '../fileHandlers';
+import { claimUpload, recordRename, type UploadOutcome } from './watch/watcherService';
 
 /**
  * Reacts to documents being saved and opened.
@@ -122,6 +127,52 @@ async function downloadOnOpen(uri: vscode.Uri): Promise<void> {
   }
 }
 
+/**
+ * Mirrors a rename onto the server, instead of sending the file again.
+ *
+ * Renaming in the editor reaches the watcher as a deletion and a creation. Left
+ * to those, the file is uploaded a second time under its new name -- and, where
+ * `autoDelete` is on, the deletion of the old name arrives afterwards and can
+ * undo the move entirely. One `rename` on the server does the whole thing, and
+ * costs one round trip rather than the size of the file.
+ *
+ * Only where the extension is already mirroring changes by itself. With neither
+ * `uploadOnSave` nor a watcher, nothing else here touches the server without
+ * being asked, and a rename should not be the exception.
+ */
+async function handleRename(oldUri: vscode.Uri, newUri: vscode.Uri): Promise<void> {
+  const fileService = getFileService(oldUri);
+  if (!fileService) {
+    return;
+  }
+
+  const config = fileService.getConfig();
+  const mirrors = Boolean(config.uploadOnSave || config.watcher?.autoUpload);
+  if (!mirrors) {
+    return;
+  }
+
+  logger.info(`[rename] ${oldUri.fsPath} -> ${newUri.fsPath}`);
+  try {
+    await renameRemote(oldUri, { newLocalPath: newUri.fsPath });
+  } catch (error) {
+    // Deliberately nothing is recorded: the old path is still on the server,
+    // and the deletion the watcher is about to report means what it says.
+    logger.error(error, `rename ${oldUri.fsPath}`);
+    app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+    return;
+  }
+
+  recordRename(oldUri.fsPath, newUri.fsPath);
+}
+
+function onRename(event: vscode.FileRenameEvent): void {
+  for (const { oldUri, newUri } of event.files) {
+    if (!isValidFile(oldUri) || !isInWorkspace(oldUri.fsPath)) continue;
+    void handleRename(oldUri, newUri).catch(error => reportError(error, 'on rename'));
+  }
+}
+
 /** A document the extension has anything to say about. */
 function isWatchedDocument(document: vscode.TextDocument): boolean {
   return isValidFile(document.uri) && isInWorkspace(document.uri.fsPath);
@@ -154,6 +205,10 @@ function onOpen(document: vscode.TextDocument): void {
 
 /** Subscribes to the editor. Dispose to unsubscribe. */
 export function monitorFileActivity(): vscode.Disposable {
-  const subscriptions = [onDidOpenTextDocument(onOpen), onDidSaveTextDocument(onSave)];
+  const subscriptions = [
+    onDidOpenTextDocument(onOpen),
+    onDidSaveTextDocument(onSave),
+    onDidRenameFiles(onRename),
+  ];
   return vscode.Disposable.from(...subscriptions);
 }

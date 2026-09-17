@@ -24,6 +24,13 @@ export function onDidSaveTextDocument(listener: (e: vscode.TextDocument) => any,
   return vscode.workspace.onDidSaveTextDocument(listener, thisArgs);
 }
 
+export function onDidRenameFiles(
+  listener: (e: vscode.FileRenameEvent) => any,
+  thisArgs?: any
+) {
+  return vscode.workspace.onDidRenameFiles(listener, thisArgs);
+}
+
 export function onDidOpenTextDocument(listener: (e: vscode.TextDocument) => any, thisArgs?: any) {
   return vscode.workspace.onDidOpenTextDocument(listener, thisArgs);
 }

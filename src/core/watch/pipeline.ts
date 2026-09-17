@@ -5,6 +5,7 @@ import type { StateStore, EntryFacts, ContentDigest } from './state';
 import { recordFrom, factsMatch } from './state';
 import type { ExpectationRegistry } from './expectations';
 import type { UploadClaims } from './uploadClaims';
+import type { RenameRegistry } from './renames';
 import type { WatchPolicy } from './policy';
 import { countDecision, type TraceEntry, type WatchCounters } from './diagnostics';
 
@@ -35,6 +36,8 @@ export interface PipelineDeps {
   expectations: ExpectationRegistry;
   /** Uploads already under way, so the same bytes are not sent twice. */
   claims: UploadClaims;
+  /** Paths renamed away, whose deletion the rename has already carried out. */
+  renames: RenameRegistry;
   keyer: PathKeyer;
   policy: WatchPolicy;
   isIgnored(path: string): boolean;
@@ -80,6 +83,8 @@ export async function processBatch(
       ? false
       : deps.expectations.consume(event.path, facts).matched;
     const uploadInFlight = ignored ? false : deps.claims.isInFlight(event.path, facts);
+    const renamedAway =
+      !ignored && event.kind === 'delete' && deps.renames.consume(event.path, deps.now());
 
     let hashed = false;
     let decision = decide({
@@ -89,6 +94,7 @@ export async function processBatch(
       prior,
       selfWrite,
       uploadInFlight,
+      renamedAway,
       policy: deps.policy,
     });
 
@@ -112,6 +118,7 @@ export async function processBatch(
             prior,
             selfWrite,
             uploadInFlight,
+            renamedAway,
             content: digest,
             policy: deps.policy,
           })

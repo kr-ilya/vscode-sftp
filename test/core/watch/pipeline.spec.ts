@@ -3,6 +3,7 @@ import { processBatch, recordSynced, type PipelineDeps } from '../../../src/core
 import { createStateStore, recordFrom, type EntryFacts } from '../../../src/core/watch/state';
 import { createExpectationRegistry } from '../../../src/core/watch/expectations';
 import { createUploadClaims } from '../../../src/core/watch/uploadClaims';
+import { createRenameRegistry } from '../../../src/core/watch/renames';
 import { createPathKeyer, type PathKey } from '../../../src/core/watch/pathkey';
 import { createCounters } from '../../../src/core/watch/diagnostics';
 import type { PendingEvent } from '../../../src/core/watch/batch';
@@ -44,6 +45,7 @@ function setup(files: Parameters<typeof makeDisk>[0], overrides: Partial<Pipelin
     store,
     expectations: createExpectationRegistry(keyer, () => clock),
     claims: createUploadClaims(keyer),
+    renames: createRenameRegistry(keyer),
     keyer,
     policy: { autoUpload: true, autoDelete: false, followSymlinks: false },
     isIgnored: () => false,
@@ -378,6 +380,65 @@ describe('uploadOnSave and the watcher answering the same save', () => {
 
     expect(counters.skipped['upload-in-flight']).toBe(1);
     expect(counters.uploaded).toBe(0);
+  });
+});
+
+describe('a rename the extension carried out itself', () => {
+  // The editor reports one as a deletion and a creation. The server was told in
+  // one command, so the deletion must not be repeated -- with autoDelete on it
+  // would remove the file that was just moved.
+  const deleting = { autoUpload: true, autoDelete: true, followSymlinks: false };
+
+  test('the deletion of the old path is not sent on', async () => {
+    const { deps } = setup({}, { policy: deleting });
+    deps.renames.renamedAway('/w/old.txt');
+
+    const outcomes = await processBatch([event('/w/old.txt', 'delete')], deps);
+
+    expect(outcomes).toHaveLength(0);
+  });
+
+  test('without the rename, the same event would delete', async () => {
+    // So the test above is known to be measuring something.
+    const { deps } = setup({}, { policy: deleting });
+
+    const outcomes = await processBatch([event('/w/old.txt', 'delete')], deps);
+
+    expect(outcomes.map(o => o.decision.action)).toEqual(['delete-remote']);
+  });
+
+  test('a deletion elsewhere still goes through', async () => {
+    const { deps } = setup({}, { policy: deleting });
+    deps.renames.renamedAway('/w/old.txt');
+
+    const outcomes = await processBatch([event('/w/unrelated.txt', 'delete')], deps);
+
+    expect(outcomes.map(o => o.decision.action)).toEqual(['delete-remote']);
+  });
+
+  test('it is reported as its own reason, not as a policy skip', async () => {
+    const { deps, counters } = setup({}, { policy: deleting });
+    deps.renames.renamedAway('/w/old.txt');
+
+    await processBatch([event('/w/old.txt', 'delete')], deps);
+
+    expect(counters.skipped['renamed-away']).toBe(1);
+  });
+
+  test('the file under its new name is recognised, not sent again', async () => {
+    // The record was carried over with the rename, so the facts on disk match
+    // and the content is never read.
+    const { deps, disk, store } = setup({ '/w/new.txt': { content: 'moved', mtimeMs: 100 } });
+    store.set(keyer('/w/new.txt'), recordFrom(
+      { type: 'file', size: 5, mtimeMs: 100, ino: 1, dev: 1 },
+      { algorithm: 'sha256', hash: 'moved' },
+      0
+    ));
+
+    const outcomes = await processBatch([event('/w/new.txt', 'create')], deps);
+
+    expect(outcomes).toHaveLength(0);
+    expect(disk.reads).toEqual([]);
   });
 });
 

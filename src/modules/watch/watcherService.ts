@@ -2,14 +2,15 @@ import * as vscode from 'vscode';
 import logger from '../../logger';
 import { upload, removeRemote, createRemoteFolder } from '../../fileHandlers';
 import type { WatcherService, WatcherContext } from '../../core';
-import { createPathKeyer, type CaseSensitivity } from '../../core/watch/pathkey';
+import { createPathKeyer, type CaseSensitivity, type PathKey } from '../../core/watch/pathkey';
 import { createEventBatcher, type PendingEvent } from '../../core/watch/batch';
 import { createExpectationRegistry } from '../../core/watch/expectations';
 import { createUploadClaims } from '../../core/watch/uploadClaims';
+import { createRenameRegistry } from '../../core/watch/renames';
 import { readFacts, readDigest, readFileState } from '../../core/watch/facts';
 import { processBatch, recordSynced, forget } from '../../core/watch/pipeline';
 import { executeOutcomes } from '../../core/watch/execute';
-import { recordFrom, type StateRecord } from '../../core/watch/state';
+import { recordFrom, type StateRecord, type StateStore } from '../../core/watch/state';
 import { createCounters, formatTrace, type WatchCounters } from '../../core/watch/diagnostics';
 import { defaultWatchPolicy } from '../../core/watch/policy';
 import { loadPersistentState, type PersistentState } from './stateStore';
@@ -97,6 +98,7 @@ async function createTree(
 
   const keyer = createPathKeyer(platformCaseSensitivity());
   const claims = createUploadClaims(keyer);
+  const renames = createRenameRegistry(keyer);
   // A tree outlives its disposal by as long as the longest transfer it started:
   // a failed upload asks for its file to be examined again, and by then the
   // config may have been reloaded and this tree replaced.
@@ -139,6 +141,7 @@ async function createTree(
     store: persistent.store,
     expectations,
     claims,
+    renames,
     keyer,
     policy,
     isIgnored: context.isIgnored,
@@ -248,6 +251,15 @@ async function createTree(
     counters,
     deps,
     persistent,
+    renamed(oldPath: string, newPath: string) {
+      // The server has been told already. What is left is to stop the watcher
+      // undoing it -- the deletion of the old path would -- and to carry the
+      // record over, so that the creation of the new one is recognised as a
+      // file already there rather than sent again.
+      renames.renamedAway(oldPath);
+      moveRecords(persistent.store, keyer(oldPath), keyer(newPath));
+      persistent.markDirty();
+    },
     reexamine: path => {
       if (!disposed) batcher.add(path, 'change');
     },
@@ -277,6 +289,8 @@ export interface TreeHandle {
   counters: WatchCounters;
   deps: Parameters<typeof processBatch>[1];
   persistent: PersistentState;
+  /** Carries what is known about a path over to its new name. */
+  renamed(oldPath: string, newPath: string): void;
   /** Puts a path back through the gate, as if the file system had reported it. */
   reexamine(path: string): void;
 }
@@ -307,6 +321,42 @@ export async function recordTransferred(localPath: string): Promise<void> {
 
   await recordSynced(handle.deps.keyer(localPath), localPath, handle.deps);
   handle.persistent.markDirty();
+}
+
+/**
+ * Moves what is recorded for a path, and for everything under it.
+ *
+ * A directory rename moves every file inside it; their records would otherwise
+ * name paths that no longer exist, and each of those files would be read and
+ * sent again as though it were new.
+ */
+function moveRecords(store: StateStore, oldKey: PathKey, newKey: PathKey): void {
+  const moved: Array<[PathKey, StateRecord]> = [];
+
+  for (const key of [...store.keys()]) {
+    if (key === oldKey) {
+      moved.push([newKey, store.get(key) as StateRecord]);
+    } else if (key.startsWith(`${oldKey}/`)) {
+      moved.push([`${newKey}${key.slice(oldKey.length)}` as PathKey, store.get(key) as StateRecord]);
+    } else {
+      continue;
+    }
+    store.delete(key);
+  }
+
+  for (const [key, record] of moved) store.set(key, record);
+}
+
+/**
+ * Tells the watcher that a path has been renamed, on the server as well.
+ *
+ * Called after the rename has succeeded, never before: if it failed, the old
+ * path is still there and its deletion -- if one comes -- means what it says.
+ */
+export function recordRename(oldPath: string, newPath: string): void {
+  const handle = findHandle(oldPath);
+  if (!handle) return;
+  handle.renamed(oldPath, newPath);
 }
 
 /** The watched tree a local path belongs to, if any. */

@@ -32,6 +32,11 @@ export interface GateInput {
    * that has not finished recording them yet.
    */
   uploadInFlight: boolean;
+  /**
+   * Whether this path has just been renamed away, on the server too, so its
+   * deletion has already been carried out by the rename itself.
+   */
+  renamedAway: boolean;
   /** Present only on the second pass, once the caller has hashed the file. */
   content?: ContentDigest;
   policy: WatchPolicy;
@@ -55,6 +60,7 @@ export type SkipReason =
   | 'auto-delete-disabled'
   | 'self-write'
   | 'upload-in-flight'
+  | 'renamed-away'
   | 'unchanged-metadata'
   | 'directory-change'
   | 'symlink'
@@ -62,13 +68,27 @@ export type SkipReason =
   | 'vanished';
 
 export function decide(input: GateInput): Decision {
-  const { kind, ignored, facts, prior, selfWrite, uploadInFlight, content, policy } = input;
+  const {
+    kind,
+    ignored,
+    facts,
+    prior,
+    selfWrite,
+    uploadInFlight,
+    renamedAway,
+    content,
+    policy,
+  } = input;
 
   // Gate 1: ignore rules, applied before anything reads the disk or the network.
   if (ignored) return { action: 'skip', reason: 'ignored' };
 
   // --- deletions take a different path: there is nothing left to compare ---
   if (kind === 'delete' || facts.type === 'missing') {
+    // Before the policy, because this is not a deletion at all: the file was
+    // renamed, the server was told, and acting on the old path now would undo
+    // what the rename just did.
+    if (renamedAway) return { action: 'skip', reason: 'renamed-away' };
     if (!policy.autoDelete) return { action: 'skip', reason: 'auto-delete-disabled' };
     if (kind !== 'delete') return { action: 'skip', reason: 'vanished' };
     return { action: 'delete-remote' };

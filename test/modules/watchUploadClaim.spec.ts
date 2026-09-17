@@ -64,6 +64,7 @@ import type { WatchCounters } from '../../src/core/watch/diagnostics';
 import watcherService, {
   claimUpload,
   getTreeHandles,
+  recordRename,
 } from '../../src/modules/watch/watcherService';
 
 let dir: string;
@@ -95,10 +96,12 @@ afterEach(() => {
 });
 
 /** Starts watching the temp directory and waits until the tree is registered. */
-async function watch(): Promise<{ watcher: FakeFileSystemWatcher; counters: WatchCounters }> {
+async function watch(
+  over: { autoDelete?: boolean } = {}
+): Promise<{ watcher: FakeFileSystemWatcher; counters: WatchCounters }> {
   watcherService.create(
     dir,
-    { files: '**/*', autoUpload: true, autoDelete: false },
+    { files: '**/*', autoUpload: true, autoDelete: over.autoDelete ?? false },
     { scope: 'test-scope', isIgnored: () => false, concurrency: 1 }
   );
   await vi.waitFor(() => expect(getTreeHandles().has(dir)).toBe(true));
@@ -149,6 +152,78 @@ function recordFor(): unknown {
 
 const uploaded = (c: WatchCounters) => c.uploaded === 1;
 const suppressed = (c: WatchCounters) => c.skipped['upload-in-flight'] === 1;
+
+describe('a rename the extension mirrored to the server', () => {
+  // The editor reports it as a deletion and a creation. The server was told in
+  // one command; repeating either half is at best wasted work and at worst --
+  // the deletion, with autoDelete on -- undoes the move.
+  const record = (hash: string) => ({
+    size: 13,
+    mtimeMs: 1,
+    ino: 1,
+    dev: 1,
+    algorithm: 'sha256',
+    hash,
+    at: 1,
+  });
+
+  function storeOf() {
+    return getTreeHandles().get(dir)!.deps.store;
+  }
+
+  function keyOf(p: string) {
+    return getTreeHandles().get(dir)!.deps.keyer(p);
+  }
+
+  test('what was known about the file moves with it', async () => {
+    await watch();
+    const to = path.join(dir, 'renamed.txt');
+    storeOf().set(keyOf(file), record('content'));
+
+    recordRename(file, to);
+
+    expect(storeOf().get(keyOf(file))).toBeUndefined();
+    expect(storeOf().get(keyOf(to))?.hash).toBe('content');
+  });
+
+  test('a renamed folder carries everything inside it', async () => {
+    // Otherwise every file in it is read and sent again under the new path.
+    await watch();
+    const oldDir = path.join(dir, 'src');
+    const newDir = path.join(dir, 'source');
+    storeOf().set(keyOf(path.join(oldDir, 'a.ts')), record('a'));
+    storeOf().set(keyOf(path.join(oldDir, 'deep', 'b.ts')), record('b'));
+    storeOf().set(keyOf(path.join(dir, 'src-backup', 'c.ts')), record('c'));
+
+    recordRename(oldDir, newDir);
+
+    expect(storeOf().get(keyOf(path.join(newDir, 'a.ts')))?.hash).toBe('a');
+    expect(storeOf().get(keyOf(path.join(newDir, 'deep', 'b.ts')))?.hash).toBe('b');
+    // A sibling whose name starts the same way is not inside it.
+    expect(storeOf().get(keyOf(path.join(dir, 'src-backup', 'c.ts')))?.hash).toBe('c');
+  });
+
+  test('the deletion that follows does not remove it from the server', async () => {
+    const { watcher, counters } = await watch({ autoDelete: true });
+    recordRename(file, path.join(dir, 'renamed.txt'));
+    fs.rmSync(file);
+
+    watcher.fire('delete', file);
+    await until(counters, c => c.skipped['renamed-away'] === 1);
+
+    expect(counters.deleted).toBe(0);
+  });
+
+  test('without the rename, the same deletion is carried out', async () => {
+    const { watcher, counters } = await watch({ autoDelete: true });
+    fs.rmSync(file);
+
+    watcher.fire('delete', file);
+    await until(counters, c => c.deleted === 1);
+
+    expect(counters.skipped['renamed-away']).toBeUndefined();
+  });
+});
 
 describe('two requests to watch the same folder at once', () => {
   // Building a tree is asynchronous -- the stored state is read from disk --

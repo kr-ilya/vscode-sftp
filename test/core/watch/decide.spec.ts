@@ -30,6 +30,7 @@ function gate(over: Partial<GateInput> = {}): Decision {
     prior: record(),
     selfWrite: false,
     uploadInFlight: false,
+    renamedAway: false,
     policy: uploading,
     ...over,
   });
