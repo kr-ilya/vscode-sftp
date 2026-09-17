@@ -80,6 +80,14 @@ export default abstract class FileSystem {
   abstract chmod(path: string, mode: number): Promise<void>;
   abstract list(dir: string, option?): Promise<FileEntry[]>;
   abstract lstat(path: string): Promise<FileStats>;
+  /**
+   * Like `lstat`, but follows a symbolic link to whatever it points at.
+   *
+   * A listing reports a link as a link, which is what it is -- but a link to a
+   * directory should open like a directory, and nothing could ask what was on
+   * the other end. Where a transport has no links, this is `lstat`.
+   */
+  abstract stat(path: string): Promise<FileStats>;
   abstract readlink(path: string): Promise<string>;
   abstract symlink(targetPath: string, path: string): Promise<void>;
   abstract unlink(path: string): Promise<void>;

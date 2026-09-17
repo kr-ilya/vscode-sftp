@@ -68,6 +68,21 @@ export default class SFTPFileSystem extends RemoteFileSystem {
     });
   }
 
+  stat(path: string): Promise<FileStats> {
+    return new Promise((resolve, reject) => {
+      // `stat`, not `lstat`: this is the one place that wants what the link
+      // points at rather than the link.
+      this.sftp.stat(path, (err, stat) => {
+        if (err) {
+          reject(remoteFailure('stat', path, err));
+          return;
+        }
+
+        resolve(this.toFileStat(stat));
+      });
+    });
+  }
+
   open(
     path: string,
     flags: string,

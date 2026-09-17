@@ -2,11 +2,13 @@ import * as vscode from 'vscode';
 import {
   upath,
   FileService,
+  FileSystem,
   FileType,
   FileEntry,
   Ignore,
   ServiceConfig,
 } from '../../core';
+import { createLimit } from '../../core/util/parallel';
 import UResource, { Resource } from '../../uResource';
 import {
   COMMAND_REMOTEEXPLORER_VIEW_CONTENT,
@@ -47,6 +49,40 @@ function dirFirstSort(fileA: ExplorerItem, fileB: ExplorerItem) {
   }
 
   return fileA.isDirectory ? -1 : 1;
+}
+
+/**
+ * Which of these entries are symbolic links pointing at a directory.
+ *
+ * Only links cost the extra round trip, and they are asked about together
+ * rather than one after another -- bounded by the same budget as everything
+ * else that talks to the server.
+ */
+async function resolveLinkedDirectories(
+  entries: FileEntry[],
+  remotefs: FileSystem,
+  concurrency: number | undefined
+): Promise<Set<string>> {
+  const links = entries.filter(entry => entry.type === FileType.SymbolicLink);
+  if (links.length === 0) return new Set();
+
+  const limit = createLimit(concurrency ?? 1);
+  const directories = new Set<string>();
+
+  await Promise.all(
+    links.map(link =>
+      limit.run(async () => {
+        try {
+          const target = await remotefs.stat(link.fspath);
+          if (target.type === FileType.Directory) directories.add(link.fspath);
+        } catch {
+          // A link pointing at nothing stays what the listing said it was.
+        }
+      })
+    )
+  );
+
+  return directories;
 }
 
 export default class RemoteTreeData implements vscode.TreeDataProvider<ExplorerItem> {
@@ -174,10 +210,17 @@ export default class RemoteTreeData implements vscode.TreeDataProvider<ExplorerI
       return !ignore.ignores(relativePath);
     }
 
-    const children = fileEntries
-      .filter(filterFile)
+    const shown = fileEntries.filter(filterFile);
+    const linkedDirectories = await resolveLinkedDirectories(shown, remotefs, config.concurrency);
+
+    const children = shown
       .map(file => {
-        const isDirectory = file.type === FileType.Directory;
+        // A link to a directory opens like one. The listing calls it a link,
+        // which is true, but expanding and browsing through it works -- the
+        // server resolves it -- and refusing to expand it was the longest
+        // standing complaint about the extension this one is forked from.
+        const isDirectory =
+          file.type === FileType.Directory || linkedDirectories.has(file.fspath);
         const newResource = UResource.updateResource(item.resource, {
           remotePath: file.fspath,
         });

@@ -48,11 +48,22 @@ class FakeFileService {
     };
   }
 
+  /** Paths asked about with stat, which only symbolic links should be. */
+  statted: string[] = [];
+  /** Targets a link resolves to, by link path. */
+  linkTargets: Record<string, number> = {};
+
   async getRemoteFileSystem() {
     return {
       list: async (path: string) => {
         this.listed.push(path);
         return this.entries;
+      },
+      stat: async (path: string) => {
+        this.statted.push(path);
+        const type = this.linkTargets[path];
+        if (type === undefined) throw new Error(`no such target: ${path}`);
+        return { type };
       },
     };
   }
@@ -131,6 +142,69 @@ describe('a targeted refresh that can be honoured', () => {
     await tree.refresh(uploadedFile(1));
 
     expect(fired).toEqual([root]);
+  });
+});
+
+describe('a symbolic link on the server', () => {
+  // The listing calls a link a link, which is what it is. But a link to a
+  // directory browses like a directory -- the server resolves it -- and
+  // refusing to expand one is the oldest open complaint about the extension
+  // this project is forked from.
+  const entry = (name: string, type: FileType) => ({
+    name,
+    fspath: `${REMOTE_PATH}/${name}`,
+    type,
+    size: 0,
+    mtime: 0,
+    atime: 0,
+    mode: 0o755,
+  });
+
+  async function childrenOf() {
+    const tree = new RemoteTreeData();
+    const [root] = await tree.getChildren();
+    return tree.getChildren(root);
+  }
+
+  test('one pointing at a directory can be expanded', async () => {
+    services[0].entries = [entry('link-to-dir', FileType.SymbolicLink)];
+    services[0].linkTargets[`${REMOTE_PATH}/link-to-dir`] = FileType.Directory;
+
+    const [child] = await childrenOf();
+
+    expect(child.isDirectory).toBe(true);
+  });
+
+  test('one pointing at a file is still a file', async () => {
+    services[0].entries = [entry('link-to-file', FileType.SymbolicLink)];
+    services[0].linkTargets[`${REMOTE_PATH}/link-to-file`] = FileType.File;
+
+    const [child] = await childrenOf();
+
+    expect(child.isDirectory).toBe(false);
+  });
+
+  test('one pointing at nothing is left as the listing described it', async () => {
+    services[0].entries = [entry('broken-link', FileType.SymbolicLink)];
+
+    const [child] = await childrenOf();
+
+    expect(child.isDirectory).toBe(false);
+  });
+
+  test('only links are asked about, not every entry', async () => {
+    // The extra round trip is what makes this affordable; spending it on plain
+    // files would make every listing twice the work.
+    services[0].entries = [
+      entry('a.txt', FileType.File),
+      entry('plain-dir', FileType.Directory),
+      entry('link', FileType.SymbolicLink),
+    ];
+    services[0].linkTargets[`${REMOTE_PATH}/link`] = FileType.Directory;
+
+    await childrenOf();
+
+    expect(services[0].statted).toEqual([`${REMOTE_PATH}/link`]);
   });
 });
 

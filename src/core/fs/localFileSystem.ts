@@ -30,6 +30,19 @@ export default class LocalFileSystem extends FileSystem {
     });
   }
 
+  stat(path: string): Promise<FileStats> {
+    return new Promise((resolve, reject) => {
+      fs.stat(path, (err, stat: fs.Stats) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        resolve(this.toFileStat(stat));
+      });
+    });
+  }
+
   readFile(path, option?): Promise<string | Buffer> {
     return new Promise((resolve, reject) => {
       fs.readFile(path, option, (err, data) => {

@@ -107,6 +107,11 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return Promise.resolve();
   }
 
+  /** FTP has no symbolic links, so there is never anything to follow. */
+  stat(path: string): Promise<FileStats> {
+    return this.lstat(path);
+  }
+
   fstat(fd: FtpFileHandle): Promise<FileStats> {
     return this.lstat(fd.path);
   }

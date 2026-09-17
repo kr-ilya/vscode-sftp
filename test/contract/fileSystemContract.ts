@@ -222,6 +222,44 @@ export function runFileSystemContract(
     }, timeoutMs);
   });
 
+  describe('following a symbolic link', () => {
+    // A listing calls a link a link, which is true and has to stay true. But
+    // something has to be able to ask what is on the other end: a link to a
+    // directory opens like a directory, and until `stat` existed nothing could
+    // tell one from a link to a file.
+    test('stat reports the target, lstat still reports the link', async () => {
+      const target = join(root, 'stat-target');
+      const link = join(root, 'stat-link');
+      await fs.ensureDir(target);
+
+      if (!subject.capabilities.symlinks) {
+        // Without links the two are the same question, and must agree.
+        expect((await fs.stat(target)).type).toBe(FileType.Directory);
+        return;
+      }
+
+      await fs.symlink(target, link);
+
+      expect((await fs.lstat(link)).type).toBe(FileType.SymbolicLink);
+      expect((await fs.stat(link)).type).toBe(FileType.Directory);
+    }, timeoutMs);
+
+    test('a link to a file is a file, not a directory', async () => {
+      if (!subject.capabilities.symlinks) return;
+
+      const target = join(root, 'stat-file.txt');
+      const link = join(root, 'stat-file-link');
+      await fs.put(text('x'), target);
+      await fs.symlink(target, link);
+
+      expect((await fs.stat(link)).type).toBe(FileType.File);
+    }, timeoutMs);
+
+    test('stat of something absent rejects', async () => {
+      await expect(fs.stat(join(root, 'no-such-target'))).rejects.toBeTruthy();
+    }, timeoutMs);
+  });
+
   describe('what a failure says', () => {
     // A transport reports at its narrowest: SFTP's catch-all status arrives as
     // the single word "Failure", and FTP's as a three-digit code. Neither says
