@@ -1,5 +1,6 @@
 import type { Outcome } from './pipeline';
 import { fileDepth } from '../util/paths';
+import { inParallel } from '../util/parallel';
 
 /**
  * Carries out the decisions a batch produced.
@@ -60,26 +61,6 @@ function byDepth(outcomes: Outcome[], deepestFirst: boolean): Outcome[][] {
   return [...groups.keys()]
     .sort((a, b) => (deepestFirst ? b - a : a - b))
     .map(depth => groups.get(depth)!);
-}
-
-/** Runs `work` over `items`, at most `limit` at a time, in no particular order. */
-async function inParallel<T>(
-  items: T[],
-  limit: number,
-  work: (item: T) => Promise<void>
-): Promise<void> {
-  let cursor = 0;
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      const index = cursor++;
-      if (index >= items.length) return;
-      await work(items[index]);
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker)
-  );
 }
 
 export async function executeOutcomes(outcomes: Outcome[], deps: ExecuteDeps): Promise<void> {

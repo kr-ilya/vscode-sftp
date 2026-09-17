@@ -7,6 +7,7 @@ import {
   TransferDirection,
   fileOperations,
 } from '../../core';
+import { createLimit, type Limit } from '../../core/util/parallel';
 import { FileHandleOption } from '../option';
 import { flatten } from '../../utils';
 import logger from '../../logger';
@@ -45,11 +46,30 @@ interface BaseTransferHandleConfig {
   srcFs: FileSystem;
   targetFs: FileSystem;
   transferDirection: TransferDirection;
+  /** The service's transfer budget, so the walk draws on the same one. */
+  concurrency?: number;
 }
+
+/**
+ * The walk's share of `concurrency`.
+ *
+ * Transfers were bounded by the service's scheduler; finding them was not. A
+ * directory's children were walked with a plain `Promise.all`, recursively, so
+ * a project of a few hundred directories opened a few hundred `mkdir` and
+ * listing requests at once -- measured at eighty concurrent operations against
+ * a budget of two. On SFTP that is what trips `MaxSessions`, and it looks like
+ * a flaky network rather than a setting that was never applied.
+ *
+ * Added to the config as it is threaded down rather than passed separately,
+ * because every level of the walk already carries the config.
+ */
+type WalkConfig = { limit: Limit };
 
 interface TransferHandleConfig<T> extends BaseTransferHandleConfig {
   transferOption: T;
 }
+
+type WalkHandleConfig<T> = TransferHandleConfig<T> & WalkConfig;
 
 function getAltDirection(direction: TransferDirection) {
   return direction === TransferDirection.LOCAL_TO_REMOTE
@@ -71,25 +91,27 @@ function toHash<T, R = T>(items: T[], key: string, transform?: (a: T) => R): { [
 }
 
 async function transferFolder(
-  config: TransferHandleConfig<TransferOption>,
+  config: WalkHandleConfig<TransferOption>,
   collect: (t: TransferTask) => void
 ) {
-  const { srcFsPath, targetFsPath, srcFs, targetFs, transferOption } = config;
+  const { srcFsPath, targetFsPath, srcFs, targetFs, transferOption, limit } = config;
 
   if (transferOption.ignore && transferOption.ignore(srcFsPath)) {
     return;
   }
 
   // Need this to make sure file can correct transfer
-  await targetFs.ensureDir(targetFsPath);
+  await limit.run(() => targetFs.ensureDir(targetFsPath));
 
   // If dirPerm is configured, we chmod the remote directory after creation.
   if(config.transferOption.dirPerm) {
     logger.info("chmod remote directory as configured by dirPerm, dirPerm is: ", config.transferOption.dirPerm)
-    await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8));
+    await limit.run(() =>
+      targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
+    );
   }
 
-  const fileEntries = await srcFs.list(srcFsPath);
+  const fileEntries = await limit.run(() => srcFs.list(srcFsPath));
   await Promise.all(
     fileEntries.map(file =>
       transferWithType(
@@ -116,7 +138,7 @@ async function transferFolder(
 }
 
 async function transferFile(
-  config: TransferHandleConfig<InternalTransferOption>,
+  config: WalkHandleConfig<InternalTransferOption>,
   fileType: FileType,
   collect: (t: TransferTask) => void
 ) {
@@ -144,7 +166,7 @@ async function transferFile(
 }
 
 async function transferWithType(
-  config: TransferHandleConfig<InternalTransferOption> & {
+  config: WalkHandleConfig<InternalTransferOption> & {
     ensureDirExist: boolean;
   },
   fileType: FileType,
@@ -157,14 +179,16 @@ async function transferWithType(
     case FileType.File:
     case FileType.SymbolicLink:
       if (config.ensureDirExist) {
-        const { targetFs, targetFsPath } = config;
-        await targetFs.ensureDir(targetFs.pathResolver.dirname(targetFsPath));
+        const { targetFs, targetFsPath, limit } = config;
+        await limit.run(() => targetFs.ensureDir(targetFs.pathResolver.dirname(targetFsPath)));
         // If dirPerm is configured, we chmod the remote directory after creation.
         if(config.transferOption.dirPerm) {
           logger.info("Running chmod on remote directory with perm: ", config.transferOption.dirPerm)
-          await targetFs.chmod(
-            targetFs.pathResolver.dirname(targetFsPath),
-            parseInt(String(config.transferOption.dirPerm), 8)
+          await limit.run(() =>
+            targetFs.chmod(
+              targetFs.pathResolver.dirname(targetFsPath),
+              parseInt(String(config.transferOption.dirPerm), 8)
+            )
           );
         }
       }
@@ -209,7 +233,7 @@ async function removeFile(file: string, fs: FileSystem, fileType: FileType, opti
 }
 
 async function _sync(
-  config: TransferHandleConfig<SyncOption>,
+  config: WalkHandleConfig<SyncOption>,
   collect: (t: TransferTask) => void,
   deleted: FileEntry[]
 ) {
@@ -425,11 +449,11 @@ async function _sync(
   };
 
   // create dir here so we don't have to ensure it for children files.
-  await targetFs.ensureDir(targetFsPath);
+  await config.limit.run(() => targetFs.ensureDir(targetFsPath));
 
   const files = await Promise.all([
-    srcFs.list(srcFsPath).catch(() => []),
-    targetFs.list(targetFsPath).catch(() => []),
+    config.limit.run(() => srcFs.list(srcFsPath).catch(() => [])),
+    config.limit.run(() => targetFs.list(targetFsPath).catch(() => [])),
   ]);
   await syncFiles(...files);
 }
@@ -440,7 +464,8 @@ export async function transfer(
   config: TransferHandleConfig<TransferOption>,
   collect: (t: TransferTask) => void
 ) {
-  const stat = await config.srcFs.lstat(config.srcFsPath);
+  const limit = createLimit(config.concurrency ?? 1);
+  const stat = await limit.run(() => config.srcFs.lstat(config.srcFsPath));
   const transferOption = {
     ...config.transferOption,
     fallbackMode: stat.mode,
@@ -450,7 +475,11 @@ export async function transfer(
     filePerm: config?.filePerm,
     dirPerm: config?.dirPerm
   };
-  await transferWithType({ ...config, transferOption, ensureDirExist: true }, stat.type, collect);
+  await transferWithType(
+    { ...config, limit, transferOption, ensureDirExist: true },
+    stat.type,
+    collect
+  );
 }
 
 export async function sync(
@@ -458,6 +487,6 @@ export async function sync(
   collect: (t: TransferTask) => void
 ): Promise<FileEntry[]> {
   const deleted: FileEntry[] = [];
-  await _sync(config, collect, deleted);
+  await _sync({ ...config, limit: createLimit(config.concurrency ?? 1) }, collect, deleted);
   return deleted;
 }

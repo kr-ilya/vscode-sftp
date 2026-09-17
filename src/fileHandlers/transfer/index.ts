@@ -19,6 +19,8 @@ function createTransferHandle(direction: TransferDirection) {
         targetFs: localFs,
         transferOption: option,
         transferDirection: TransferDirection.REMOTE_TO_LOCAL,
+        // The walk draws on the same budget as the transfers it finds.
+        concurrency: this.config.concurrency,
       };
     } else {
       // Asked once per destination, before anything is written. A mistyped
@@ -35,6 +37,7 @@ function createTransferHandle(direction: TransferDirection) {
         filePerm: this.config.filePerm,
         dirPerm: this.config.dirPerm,
         transferDirection: TransferDirection.LOCAL_TO_REMOTE,
+        concurrency: this.config.concurrency,
       };
     }
     // todo: abort at here. we should stop collect task
@@ -67,6 +70,7 @@ export const sync2Remote = createFileHandler<SyncOption>({
         targetFs: remoteFs,
         transferOption: option,
         transferDirection: TransferDirection.LOCAL_TO_REMOTE,
+        concurrency: this.config.concurrency,
       },
       t => scheduler.add(t)
     );
@@ -107,6 +111,7 @@ export const sync2Local = createFileHandler<SyncOption>({
         targetFs: localFs,
         transferOption: option,
         transferDirection: TransferDirection.REMOTE_TO_LOCAL,
+        concurrency: this.config.concurrency,
       },
       t => scheduler.add(t)
     );

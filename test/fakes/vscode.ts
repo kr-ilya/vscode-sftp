@@ -333,6 +333,8 @@ export const window = strict('window', {
 
 export const workspace = strict('workspace', {
   workspaceFolders: undefined as unknown,
+  /** Open editors. A transfer checks these to save a dirty file before sending it. */
+  textDocuments: [] as Array<{ fileName: string; isClosed: boolean; isDirty: boolean }>,
   getConfiguration: () => ({ get: () => undefined }),
   createFileSystemWatcher: (pattern: RelativePattern) => {
     const watcher = new FakeFileSystemWatcher(pattern);
