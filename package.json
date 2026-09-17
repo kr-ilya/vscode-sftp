@@ -730,6 +730,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:menu": "bash scripts/test.sh",
+    "test:all": "bash scripts/test.sh all",
     "package": "vsce package",
     "version:next": "node scripts/next-version.mjs",
     "smoke": "node scripts/smoke.mjs",
