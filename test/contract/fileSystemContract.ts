@@ -199,6 +199,20 @@ export function runFileSystemContract(
       await expect(fs.lstat(from)).rejects.toBeTruthy();
     }, timeoutMs);
 
+    test('rename can change only the case of a name', async () => {
+      // What a user does to correct a file name. On Windows and macOS the
+      // watcher cannot see it -- the two spellings are one path there -- so it
+      // arrives through the editor's own rename event instead, and has to work
+      // once it gets here.
+      const lower = join(root, 'case-name.txt');
+      const upper = join(root, 'CASE-NAME.txt');
+      await fs.put(text('same file'), lower);
+
+      await fs.rename(lower, upper);
+
+      expect(await drain(await fs.get(upper))).toBe('same file');
+    }, timeoutMs);
+
     test('unlink removes a file', async () => {
       const file = join(root, 'doomed.txt');
       await fs.put(text('x'), file);

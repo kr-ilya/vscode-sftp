@@ -5,7 +5,18 @@ import { pathRelativeToWorkspace, getWorkspaceFolders } from '../host';
 import { isSubpathOf } from '../core/util/paths';
 
 // from https://github.com/microsoft/vscode-eslint/blob/d97a8b5e99ad30d2ce32ffa5646447202f873413/server/src/eslintServer.ts#L816
-function getFileSystemPath(fsPath: string): string {
+/**
+ * @param resolveCasing whether to replace the name with the one on disk.
+ *
+ * Normally yes: the editor does not promise the casing of the paths it reports,
+ * and the server should receive the file under the name it really has. The
+ * exception is a path that is meant to name a spelling rather than a file --
+ * the old side of a rename. On a case-insensitive file system the old name
+ * still resolves, to the *new* file, so recovering the casing there turns
+ * `readme.md` into `README.md` and the rename into a request to move a file
+ * onto itself.
+ */
+function getFileSystemPath(fsPath: string, resolveCasing = true): string {
 	let result = fsPath;
 	if (process.platform === 'win32' && result.length >= 2 && result[1] === ':') {
 		// Node by default uses an upper case drive letter and ESLint uses
@@ -13,7 +24,7 @@ function getFileSystemPath(fsPath: string): string {
 		// if the drive letter is lower case in th URI. Ensure upper case.
 		result = result[0].toUpperCase() + result.substr(1);
 	}
-	if (process.platform === 'win32' || process.platform === 'darwin') {
+	if (resolveCasing && (process.platform === 'win32' || process.platform === 'darwin')) {
 		// Best effort only: this exists to recover the on-disk casing, and it must
 		// not be fatal when the path is not there. It is routinely not -- a file
 		// being renamed no longer exists under its old name, and a deleted one
@@ -37,8 +48,25 @@ export function simplifyPath(absolutePath: string) {
 }
 
 // FIXME: use fs.pathResolver instead of upath
-export function toRemotePath(localPath: string, localContext: string, remoteContext: string) {
-  return upath.join(remoteContext, path.relative(getFileSystemPath(localContext), getFileSystemPath(localPath)));
+/**
+ * @param options.resolveCasing pass false to keep the spelling given rather
+ * than the one on disk; see getFileSystemPath.
+ */
+export function toRemotePath(
+  localPath: string,
+  localContext: string,
+  remoteContext: string,
+  options: { resolveCasing?: boolean } = {}
+) {
+  return upath.join(
+    remoteContext,
+    path.relative(
+      // The context always resolves: it has to match what the file path
+      // resolved to, or nothing relative to it comes out right.
+      getFileSystemPath(localContext),
+      getFileSystemPath(localPath, options.resolveCasing ?? true)
+    )
+  );
 }
 
 // FIXME: use fs.pathResolver instead of upath

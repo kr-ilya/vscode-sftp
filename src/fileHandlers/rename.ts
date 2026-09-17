@@ -20,7 +20,17 @@ export const renameRemote = createFileHandler<{ newLocalPath: string }>({
   name: 'rename',
   async handle({ newLocalPath }) {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
-    const from = this.target.remoteFsPath;
+    // The old side keeps the spelling it was given. Taken from the target, it
+    // would have been resolved against the disk -- where, on a case-insensitive
+    // file system, the old name still finds the file, now under its new one. A
+    // rename that changes only the case then asked the server to move a file
+    // onto itself.
+    const from = toRemotePath(
+      this.target.localFsPath,
+      this.fileService.baseDir,
+      this.config.remotePath,
+      { resolveCasing: false }
+    );
     const to = toRemotePath(newLocalPath, this.fileService.baseDir, this.config.remotePath);
 
     await fileOperations.rename(from, to, remoteFs);
