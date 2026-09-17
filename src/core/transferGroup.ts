@@ -81,6 +81,25 @@ export function createTransferGroup(options: {
     const outstanding = new Set<CancellableTask>();
     const queued = new Set<CancellableTask>();
     let stopped = false;
+    /**
+     * Whether the caller has finished adding.
+     *
+     * A batch is filled *while* its tasks are already running: the callers walk
+     * a directory tree and queue each file as they find it, and the scheduler
+     * starts the first ones long before the walk reaches the last. So an empty
+     * `outstanding` does not mean the batch is done -- it means the walk has
+     * not caught up yet.
+     *
+     * Retiring the batch at that moment used to strand everything queued after
+     * it: the batch was gone from `batches`, so `onTaskDone` could no longer
+     * find an owner for those tasks, nothing settled them, and `run()` returned
+     * a promise that was never resolved. The files reached the server; only the
+     * report of having finished never arrived, leaving the spinner turning and
+     * the service permanently "transferring". Reproducible on every FTP folder
+     * upload with nested directories, where listing a directory costs more than
+     * sending a file.
+     */
+    let closed = false;
     let firstError: Error | undefined;
     let waiters: Array<() => void> = [];
 
@@ -95,12 +114,17 @@ export function createTransferGroup(options: {
 
       add(task: CancellableTask) {
         if (stopped) return;
+        if (closed) {
+          // Nothing would ever wait for it, so say so rather than hang.
+          throw new Error('TransferBatch: add() after run()');
+        }
         outstanding.add(task);
         queued.add(task);
         scheduler.add(task);
       },
 
       run() {
+        closed = true;
         if (outstanding.size === 0) {
           batch.drop();
           return Promise.resolve();
@@ -112,6 +136,9 @@ export function createTransferGroup(options: {
 
       stop() {
         stopped = true;
+        // A stopped batch nobody is waiting on would otherwise stay registered
+        // for the life of the service.
+        if (!closed && outstanding.size === 0) batch.drop();
         // Cancel rather than dequeue: the scheduler cannot withdraw a single
         // task, but a cancelled one does nothing when its turn comes. Tasks
         // belonging to other batches are untouched.
@@ -128,7 +155,8 @@ export function createTransferGroup(options: {
         if (error && !firstError) firstError = error;
         outstanding.delete(task);
         queued.delete(task);
-        if (outstanding.size === 0) batch.drop();
+        // Only once the caller has stopped adding: see `closed`.
+        if (closed && outstanding.size === 0) batch.drop();
       },
 
       drop() {
@@ -149,8 +177,10 @@ export function createTransferGroup(options: {
       scheduler.setConcurrency(concurrency);
     },
     stopAll() {
+      // Cancel, do not discard. Emptying the scheduler's queue drops tasks
+      // without ever reporting them done, so their batch would wait on them
+      // for ever; a cancelled task is dequeued as usual and does nothing.
       for (const batch of [...batches]) batch.stop();
-      scheduler.empty();
     },
     get pending() {
       return scheduler.size;

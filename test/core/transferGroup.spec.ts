@@ -3,6 +3,20 @@ import { createTransferGroup, type CancellableTask } from '../../src/core/transf
 
 const tick = (ms = 1) => new Promise(r => setTimeout(r, ms));
 
+/** A task that does nothing once cancelled, as every real transfer task does. */
+function trackedCancellable(onRun: () => void): CancellableTask {
+  let cancelled = false;
+  return {
+    cancel() {
+      cancelled = true;
+    },
+    async run() {
+      if (cancelled) return;
+      onRun();
+    },
+  };
+}
+
 function trackedTask(log: { running: number; max: number }, ms = 5): CancellableTask {
   let cancelled = false;
   return {
@@ -18,6 +32,82 @@ function trackedTask(log: { running: number; max: number }, ms = 5): Cancellable
     },
   };
 }
+
+describe('a batch filled while its tasks are already running', () => {
+  // The callers queue files as a directory walk finds them, so the scheduler
+  // starts the first ones long before the last is added. An empty `outstanding`
+  // in the middle of that means the walk has not caught up -- not that the
+  // batch is finished.
+  test('resolves even when it empties between two adds', async () => {
+    const group = createTransferGroup({ concurrency: 4 });
+    const batch = group.openBatch();
+    const done: string[] = [];
+
+    batch.add({ async run() { done.push('first'); } });
+    // Let the first task finish before the walk queues the next one.
+    await tick(5);
+    batch.add({ async run() { done.push('second'); } });
+
+    await expect(
+      Promise.race([batch.run(), tick(300).then(() => 'timed out')])
+    ).resolves.toBeUndefined();
+    expect(done).toEqual(['first', 'second']);
+  });
+
+  test('a failure in a late task is still reported', async () => {
+    // The batch keeps the first error so a caller cannot report success after a
+    // partial one. A task nobody owned could not record its failure either.
+    const group = createTransferGroup({ concurrency: 4 });
+    const batch = group.openBatch();
+
+    batch.add({ async run() { /* fine */ } });
+    await tick(5);
+    batch.add({
+      async run() {
+        throw new Error('late failure');
+      },
+    });
+
+    await batch.run();
+    expect(batch.error?.message).toBe('late failure');
+  });
+
+  test('cancelling still resolves, and does not run what it cancelled', async () => {
+    // Cancel All Transfers reaches a batch through `stop()`. A task it cancels
+    // is still dequeued and still reports itself done, which is what lets the
+    // batch finish rather than wait on work that will never happen.
+    const group = createTransferGroup({ concurrency: 1 });
+    const busy = group.openBatch();
+    const batch = group.openBatch();
+    let ranAfterStop = false;
+
+    busy.add({ async run() { await tick(30); } });
+    batch.add({ async run() { await tick(1); } });
+    await tick(5);
+
+    const late = trackedCancellable(() => {
+      ranAfterStop = true;
+    });
+    batch.add(late);
+    batch.stop();
+
+    await expect(
+      Promise.race([batch.run(), tick(500).then(() => 'timed out')])
+    ).resolves.toBeUndefined();
+    expect(ranAfterStop).toBe(false);
+    await busy.run();
+  });
+
+  test('adding after run() is refused rather than silently ignored', async () => {
+    const group = createTransferGroup({ concurrency: 1 });
+    const batch = group.openBatch();
+    batch.add({ async run() { /* fine */ } });
+
+    const running = batch.run();
+    expect(() => batch.add({ async run() { /* too late */ } })).toThrow(/add\(\) after run\(\)/);
+    await running;
+  });
+});
 
 describe('concurrency is a budget for the service, not for each operation', () => {
   test('two batches together never exceed the limit', async () => {
