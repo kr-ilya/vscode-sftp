@@ -5,7 +5,9 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'out/', 'node_modules/', '.vscode-test/', '**/*.d.ts'],
+    // `coverage/` is generated, and the report it writes carries its own
+    // eslint directives -- so a coverage run used to make the next lint noisy.
+    ignores: ['dist/', 'out/', 'coverage/', 'node_modules/', '.vscode-test/', '**/*.d.ts'],
   },
   {
     files: ['**/*.ts'],
