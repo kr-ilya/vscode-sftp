@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { upath } from '../core';
 import { pathRelativeToWorkspace, getWorkspaceFolders } from '../host';
+import { isSubpathOf } from '../core/util/paths';
 
 // from https://github.com/microsoft/vscode-eslint/blob/d97a8b5e99ad30d2ce32ffa5646447202f873413/server/src/eslintServer.ts#L816
 function getFileSystemPath(fsPath: string): string {
@@ -52,11 +53,15 @@ export { isSubpathOf, replaceHomePath, resolvePath } from '../core/util/paths';
 /** Editor-aware: needs to know what the open workspace folders are. */
 export function isInWorkspace(filepath: string): boolean {
   const workspaceFolders = getWorkspaceFolders();
+  // Folded to lower case because VS Code does not promise stable casing for the
+  // paths it hands out; compared by segment because a string prefix answers yes
+  // for a sibling folder whose name merely starts the same way.
+  const file = filepath.toLowerCase();
   return Boolean(
     workspaceFolders &&
-    workspaceFolders.some(
-      // vscode can't keep filepath's stable, covert them to toLowerCase before check
-      folder => filepath.toLowerCase().indexOf(folder.uri.fsPath.toLowerCase()) === 0
-    )
+    workspaceFolders.some(folder => {
+      const root = folder.uri.fsPath.toLowerCase();
+      return file === root || isSubpathOf(root, file);
+    })
   );
 }

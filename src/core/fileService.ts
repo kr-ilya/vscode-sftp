@@ -1,9 +1,11 @@
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import logger from './logger';
 import upath from './upath';
 import Ignore from './ignore';
 import { FileSystem } from './fs';
 import { fileContentCache } from './fileContentCache';
+import { isSubpathOf } from './util/paths';
 import * as path from 'path';
 import {
   chooseDefaultPort,
@@ -148,6 +150,32 @@ enum Event {
 export { setNamedRemoteResolver, type NamedRemoteResolver } from './config/serviceConfig';
 
 let id = 0;
+
+/**
+ * Names the change-detection state that belongs to one watcher.
+ *
+ * It used to carry `this.id`, a counter over the life of the process. Every
+ * reload of the configuration builds new services with new ids, so the state
+ * file was renamed on every save of `sftp.json`: what had been recorded was
+ * never found again, the whole tree was hashed afresh, and the previous file
+ * was left behind in global storage for good.
+ *
+ * Derived from where the files go instead. The profile is part of it because
+ * one file legitimately has different state per server; so is the destination,
+ * because state recorded against one server says nothing about another, and a
+ * `remotePath` that has been repointed must not look already synchronised.
+ */
+function watchScope(config: ServiceConfig, profile: string): string {
+  const destination = [
+    config.protocol ?? '',
+    config.host ?? '',
+    config.port ?? '',
+    config.username ?? '',
+    config.remotePath ?? '',
+  ].join('\u0000');
+
+  return `${createHash('sha256').update(destination).digest('hex').slice(0, 16)}:${profile}`;
+}
 
 export default class FileService {
   private _eventEmitter: EventEmitter = new EventEmitter();
@@ -371,9 +399,27 @@ export default class FileService {
     return profiles ? Object.keys(profiles).map(p => this.getConfig(p)) : [];
   }
 
+  /**
+   * Releases the watcher and the connection.
+   *
+   * Nothing here may throw. `_disposeFileSystem` resolves the configuration to
+   * find which connection to close, and resolving it fails for exactly the
+   * configurations most likely to be disposed -- an incomplete one being
+   * edited, or one whose profile has not been chosen. Thrown, that aborted the
+   * loop reloading every service in the workspace, leaving some removed and
+   * none recreated until the window was reloaded.
+   */
   dispose() {
-    this._disposeWatcher();
-    this._disposeFileSystem();
+    try {
+      this._disposeWatcher();
+    } catch (error) {
+      logger.warn('[service] could not dispose the watcher', error);
+    }
+    try {
+      this._disposeFileSystem();
+    } catch (error) {
+      logger.warn('[service] could not close the connection', error);
+    }
   }
 
   private _resolveServiceConfig(
@@ -417,7 +463,10 @@ export default class FileService {
       // vscode will always return path with / as separator
       const normalizedPath = path.normalize(fsPath);
       let relativePath;
-      if (normalizedPath.indexOf(localContext) === 0) {
+      // By segment, not by prefix: `/work/proj-backup/a.txt` is not inside
+      // `/work/proj`, and treating it as local made the ignore rules apply
+      // relative to a root the file does not belong to.
+      if (normalizedPath === localContext || isSubpathOf(localContext, normalizedPath)) {
         // local path
         relativePath = path.relative(localContext, fsPath);
       } else {
@@ -451,7 +500,7 @@ export default class FileService {
       watcherConfig = config.watcher ?? watcherConfig;
       const ignore = config.ignore;
       if (ignore) isIgnored = fsPath => ignore(fsPath);
-      scope = `${this.id}:${this._activeProfileProvider() ?? ''}`;
+      scope = watchScope(config, this._activeProfileProvider() ?? '');
       concurrency = config.concurrency;
     } catch {
       // An invalid or incomplete config must not prevent the watcher from

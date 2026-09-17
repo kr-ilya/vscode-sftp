@@ -20,8 +20,21 @@ export function resolvePath(from: string, to: string): string {
   return path.resolve(from, replaceHomePath(to));
 }
 
+/**
+ * Whether `pathname` lies inside `possibleParentPath`.
+ *
+ * Compared segment by segment rather than by string prefix, which answered yes
+ * for `/work/proj` and `/work/proj-backup`: the second workspace's files were
+ * then attributed to the first one's watcher, and its ignore rules were applied
+ * relative to the wrong root.
+ *
+ * A path is not inside itself -- callers that accept the root itself test for
+ * equality separately, and say so where they do.
+ */
 export function isSubpathOf(possibleParentPath: string, pathname: string): boolean {
-  return path.normalize(pathname).indexOf(path.normalize(possibleParentPath)) === 0;
+  const relative = path.relative(possibleParentPath, pathname);
+  if (relative === '') return false;
+  return !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
 }
 
 /** How deep a path is, used to order transfers parents-last. */

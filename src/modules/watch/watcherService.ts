@@ -35,6 +35,33 @@ interface WatchedTree {
 const trees = new Map<string, WatchedTree>();
 let storageDir: vscode.Uri | null = null;
 
+/**
+ * Which attempt to build a tree for a base is the current one.
+ *
+ * Building one is asynchronous -- the stored state is read from disk first --
+ * while asking for one is not. Two requests in quick succession, which a
+ * profile switch and a save of `sftp.json` both produce, therefore overlapped:
+ * the second found nothing to dispose because the first had not registered
+ * itself yet, and when both finished the second overwrote the first in the
+ * table. The first tree's watcher, its subscriptions, its batcher and its state
+ * store then stayed alive for the rest of the session, handling every event a
+ * second time with a store of its own.
+ *
+ * A build checks, after each point where it gave up control, that it is still
+ * the attempt that was asked for.
+ */
+const generations = new Map<string, number>();
+
+function startAttempt(watcherBase: string): number {
+  const attempt = (generations.get(watcherBase) ?? 0) + 1;
+  generations.set(watcherBase, attempt);
+  return attempt;
+}
+
+function isCurrent(watcherBase: string, attempt: number): boolean {
+  return generations.get(watcherBase) === attempt;
+}
+
 export function initializeWatching(context: vscode.ExtensionContext): void {
   storageDir = context.globalStorageUri;
 }
@@ -55,7 +82,8 @@ function platformCaseSensitivity(): CaseSensitivity {
 async function createTree(
   watcherBase: string,
   watcherConfig: { files?: string | false | null; autoUpload?: boolean; autoDelete?: boolean },
-  context: WatcherContext
+  context: WatcherContext,
+  attempt: number
 ): Promise<void> {
   const watcherConcurrency = context.concurrency ?? 1;
   const policy = {
@@ -92,6 +120,14 @@ async function createTree(
       flush: async () => undefined,
       dispose: () => undefined,
     };
+  }
+
+  // Reading the state gave up control, and in that time this attempt may have
+  // been replaced. Nothing observable has been created yet, so there is nothing
+  // to unwind but the state itself.
+  if (!isCurrent(watcherBase, attempt)) {
+    persistent.dispose();
+    return;
   }
 
   const expectations = createExpectationRegistry(keyer, Date.now);
@@ -372,6 +408,10 @@ export async function seedFromDisk(base: string, files: string[]): Promise<numbe
 }
 
 function disposeTree(watcherBase: string): void {
+  // Also stands down a build that has not finished: it would otherwise register
+  // itself after this call and outlive the thing that asked for it.
+  startAttempt(watcherBase);
+
   const tree = trees.get(watcherBase);
   if (!tree) return;
   tree.dispose();
@@ -384,8 +424,9 @@ function disposeTree(watcherBase: string): void {
 const watcherService: WatcherService = {
   create(watcherBase, watcherConfig, context) {
     disposeTree(watcherBase);
+    const attempt = startAttempt(watcherBase);
     if (!watcherConfig) return;
-    void createTree(watcherBase, watcherConfig, context).catch(error =>
+    void createTree(watcherBase, watcherConfig, context, attempt).catch(error =>
       logger.error(error, `[watch] setting up ${watcherBase}`)
     );
   },

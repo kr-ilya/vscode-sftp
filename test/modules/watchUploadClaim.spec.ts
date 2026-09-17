@@ -150,6 +150,56 @@ function recordFor(): unknown {
 const uploaded = (c: WatchCounters) => c.uploaded === 1;
 const suppressed = (c: WatchCounters) => c.skipped['upload-in-flight'] === 1;
 
+describe('two requests to watch the same folder at once', () => {
+  // Building a tree is asynchronous -- the stored state is read from disk --
+  // while asking for one is not. A profile switch and a save of `sftp.json`
+  // both ask twice in quick succession, and the second used to find nothing to
+  // dispose because the first had not registered itself yet.
+  function ask() {
+    watcherService.create(
+      dir,
+      { files: '**/*', autoUpload: true, autoDelete: false },
+      { scope: 'test-scope', isIgnored: () => false, concurrency: 1 }
+    );
+  }
+
+  test('only one tree ends up registered, and only one watcher is ever created', async () => {
+    ask();
+    ask();
+    await vi.waitFor(() => expect(getTreeHandles().has(dir)).toBe(true));
+    await quiet();
+
+    expect(getTreeHandles().size).toBe(1);
+    // The overtaken attempt stands down before it creates anything observable,
+    // so there is no orphan left subscribed to the file system.
+    expect(createdWatchers).toHaveLength(1);
+  });
+
+  test('the surviving tree is the one that answers events', async () => {
+    ask();
+    ask();
+    await vi.waitFor(() => expect(getTreeHandles().has(dir)).toBe(true));
+    await quiet();
+
+    const counters = getTreeHandles().get(dir)!.counters;
+    createdWatchers[0].fire('change', file);
+    await until(counters, uploaded);
+
+    // One upload, not two: a leftover tree would have handled the same event
+    // again, with a store of its own.
+    expect(mocks.upload).toHaveBeenCalledTimes(1);
+  });
+
+  test('a request withdrawn before it finishes leaves nothing behind', async () => {
+    ask();
+    watcherService.dispose(dir);
+    await quiet();
+
+    expect(getTreeHandles().size).toBe(0);
+    expect(createdWatchers).toHaveLength(0);
+  });
+});
+
 describe('a save that both routes react to', () => {
   test('without a claim, the watcher uploads what uploadOnSave is already sending', async () => {
     // The state this defends against, asserted first so the test below is
