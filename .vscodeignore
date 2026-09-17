@@ -8,6 +8,11 @@
 !dist/extension.js
 !package.json
 !README.md
+# Rendered as its own tab on the marketplace page, so it lists this extension's
+# releases and nothing else. The history of the extension this one forks lives
+# in docs/history-upstream.md, which does not ship: a changelog tab carrying
+# another publisher's version numbers makes the listing read as a republished
+# copy of theirs.
 !CHANGELOG.md
 !LICENSE
 # Only what the extension itself draws. The rest of resources/icons -- the

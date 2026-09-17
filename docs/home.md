@@ -7,3 +7,4 @@
    - [FTP(s) only](./configuration.md#ftps-only-configuration)
 3. [Commands](./commands.md)
 4. [FAQ](./../FAQ.md) — [по-русски](./../FAQ.ru.md)
+5. [Earlier history](./history-upstream.md) — releases of the extension this one forks, up to 1.16.3
