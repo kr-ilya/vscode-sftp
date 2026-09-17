@@ -25,6 +25,7 @@ export interface ConnectOption {
   limitOpenFilesOnRemote?: boolean | number;
 
   // ftp-only
+  encoding?: 'utf8' | 'latin1' | 'ascii';
   secure?: any;
   secureOptions?: object;
   passive?: boolean;

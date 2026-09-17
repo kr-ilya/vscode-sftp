@@ -49,6 +49,7 @@ The configuration file can always be accessed with `CTRL` + `Shift` + `P`, and s
 - [secure](#secure)
 - [secureOptions](#secureoptions)
 - [passive](#passive)
+- [encoding](#encoding)
 
 
 
@@ -722,3 +723,19 @@ The FTP transport is `basic-ftp`, which implements passive mode only, so `passiv
 | Key | Value | Default |
 | --- | --- | --- |
 | *passive* | *boolean* | `true` *(not configurable)* |
+
+### encoding
+Character encoding for file names on the FTP control connection.
+
+UTF-8 is assumed, which is right for a modern server and wrong for an older one: a server answering in a single-byte code page produces names that look like damage, and the paths built from those names address nothing, so every operation on them fails for a reason that has nothing to do with the file. Set `latin1` for such a server.
+
+| Key | Value | Default |
+| --- | --- | --- |
+| *encoding* | `"utf8"` \| `"latin1"` \| `"ascii"` | `"utf8"` |
+
+```json
+{
+  "protocol": "ftp",
+  "encoding": "latin1"
+}
+```

@@ -50,9 +50,19 @@ export default class FTPClient extends RemoteClient {
       secure,
       secureOptions,
       passive,
+      encoding,
     } = connectOption;
 
     const client = this.client;
+
+    // File names travel on the control connection, so the encoding has to be
+    // set before anything is listed. basic-ftp assumes UTF-8, which is right
+    // for a modern server and wrong for an older one -- a server answering in
+    // a single-byte code page produces names that look like damage, and the
+    // paths built from them address nothing.
+    if (encoding) {
+      client.ftp.encoding = encoding;
+    }
 
     if (passive === false) {
       logger.warn(

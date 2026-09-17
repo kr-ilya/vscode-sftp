@@ -338,6 +338,15 @@
               "passive": {
                 "description": "Use passive mode.",
                 "type": "boolean"
+              },
+              "encoding": {
+                "description": "Character encoding for file names on the control connection. UTF-8 by default; \"latin1\" for older servers that send names in a single-byte code page and would otherwise arrive garbled.",
+                "type": "string",
+                "enum": [
+                  "utf8",
+                  "latin1",
+                  "ascii"
+                ]
               }
             },
             "additionalProperties": {}
@@ -864,6 +873,15 @@
         "passive": {
           "description": "Use passive mode.",
           "type": "boolean"
+        },
+        "encoding": {
+          "description": "Character encoding for file names on the control connection. UTF-8 by default; \"latin1\" for older servers that send names in a single-byte code page and would otherwise arrive garbled.",
+          "type": "string",
+          "enum": [
+            "utf8",
+            "latin1",
+            "ascii"
+          ]
         }
       },
       "required": [

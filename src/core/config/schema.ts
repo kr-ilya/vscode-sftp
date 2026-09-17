@@ -163,6 +163,14 @@ const ftpShape = {
     .optional()
     .describe('Options forwarded verbatim to Node\'s tls.connect().'),
   passive: z.boolean().optional().describe('Use passive mode.'),
+  encoding: z
+    .enum(['utf8', 'latin1', 'ascii'])
+    .optional()
+    .describe(
+      'Character encoding for file names on the control connection. UTF-8 by ' +
+        'default; "latin1" for older servers that send names in a single-byte ' +
+        'code page and would otherwise arrive garbled.'
+    ),
 };
 
 // --- the composed config ----------------------------------------------------
