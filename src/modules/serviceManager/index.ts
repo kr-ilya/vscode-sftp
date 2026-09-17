@@ -8,6 +8,7 @@ import UResource from '../../uResource';
 import { validateConfig } from '../config';
 import watcherService, { recordTransferred } from '../watch/watcherService';
 import Trie from './trie';
+import { maskConfig } from '../../core/config/mask';
 
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;
 const isWindows = process.platform === 'win32';
@@ -18,31 +19,6 @@ const serviceManager = new Trie<FileService>(
     delimiter: path.sep,
   }
 );
-
-function maskConfig(config) {
-  const copy = {};
-  const MASK = '******';
-  Object.keys(config).forEach(key => {
-    const configValue = config[key];
-    switch (key) {
-      case 'username':
-      case 'password':
-      case 'passphrase':
-        copy[key] = MASK;
-        break;
-      case 'interactiveAuth':
-        if (Array.isArray(configValue)) {
-          copy[key] = configValue.map(() => MASK);
-        } else {
-          copy[key] = configValue;
-        }
-        break;
-      default:
-        copy[key] = configValue;
-    }
-  });
-  return copy;
-}
 
 function normalizePathForTrie(pathname) {
   if (isWindows) {
