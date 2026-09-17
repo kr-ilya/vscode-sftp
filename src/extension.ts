@@ -86,9 +86,14 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }
   });
+  // Before the services: setting them up can fail on a configuration this
+  // extension cannot resolve, and everything that reaches for the explorer --
+  // resolving a remote URI, refreshing after a save -- would then find nothing
+  // there and report a TypeError on top of the real error. It builds its roots
+  // lazily, so creating it early costs nothing.
+  app.remoteExplorer = new RemoteExplorer(context);
   try {
     await setup(workspaceFolders);
-    app.remoteExplorer = new RemoteExplorer(context);
   } catch (error) {
     reportError(error);
   }

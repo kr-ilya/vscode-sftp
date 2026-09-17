@@ -38,9 +38,11 @@ async function handleConfigSave(uri: vscode.Uri): Promise<void> {
 
   const workspacePath = workspaceFolder.uri.fsPath;
 
-  findAllFileService(service => service.workspace === workspacePath).forEach(disposeFileService);
-
   try {
+    // Inside the try: disposing resolves each configuration, and a
+    // configuration being edited is routinely unresolvable. Thrown from out
+    // here it left the workspace with some services removed and none rebuilt.
+    findAllFileService(service => service.workspace === workspacePath).forEach(disposeFileService);
     const configs = await readConfigsFromFile(uri.fsPath);
     configs.forEach(config => createFileService(config, workspacePath));
   } catch (error) {

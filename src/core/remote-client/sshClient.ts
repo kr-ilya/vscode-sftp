@@ -258,6 +258,7 @@ export default class SSHClient extends RemoteClient {
       client.sftp((err, sftp) => {
         if (err) {
           reject(err);
+          return;
         }
 
         resolve(sftp);

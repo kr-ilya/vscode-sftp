@@ -46,6 +46,9 @@ export default class RemoteExplorer {
       treeDataProvider: this._treeDataProvider,
       canSelectMany: true,
     });
+    // A TreeView is disposable like everything else here; it was the one thing
+    // in this constructor left to the garbage collector.
+    context.subscriptions.push(this._explorerView);
 
     registerCommand(context, COMMAND_REMOTEEXPLORER_REFRESH, () => this._refreshSelection());
     registerCommand(context, COMMAND_REMOTEEXPLORER_REFRESH_ACTIVE_FILE, () => this._refreshActiveRemoteFile());

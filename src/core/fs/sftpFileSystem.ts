@@ -255,6 +255,7 @@ export default class SFTPFileSystem extends RemoteFileSystem {
       this.sftp.symlink(targetPath, path, err => {
         if (err) {
           reject(remoteFailure('symlink', `${path} -> ${targetPath}`, err));
+          return;
         }
         resolve();
       });

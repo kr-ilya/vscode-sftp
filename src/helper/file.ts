@@ -18,7 +18,10 @@ export { fileDepth } from '../core/util/paths';
 export function makeTmpFile(option): Promise<string> {
   return new Promise((resolve, reject) => {
     tmp.file({ ...option, discardDescriptor: true }, (err, tmpPath) => {
-      if (err) reject(err);
+      if (err) {
+        reject(err);
+        return;
+      }
 
       resolve(tmpPath);
     });

@@ -41,6 +41,19 @@ export interface TransferOption {
 /** Bytes moved so far, and the total when it is known. */
 export type TransferProgressListener = (transferred: number, total?: number) => void;
 
+/**
+ * Releases whatever an open resolved to, without letting that failure replace
+ * the one being reported.
+ */
+function closeQuietly(opened: unknown): void {
+  const stream = opened as { destroy?: (error?: Error) => void } | null;
+  try {
+    stream?.destroy?.();
+  } catch {
+    // Nothing to do about it, and the caller is already throwing.
+  }
+}
+
 export default class TransferTask implements Task {
   readonly fileType: FileType;
   private readonly _srcFsPath: string;
@@ -261,6 +274,12 @@ export default class TransferTask implements Task {
       throw fromSource.reason;
     }
     if (fromTarget.status === 'rejected') {
+      // The source opened and nothing will ever read it. Closing the target's
+      // handle was the point of pairing these two; leaving the source's open is
+      // the same leak from the other side -- on a download that is a handle on
+      // the server, and `limitOpenFilesOnRemote` counts it against every later
+      // transfer.
+      closeQuietly(fromSource.value);
       throw fromTarget.reason;
     }
 
