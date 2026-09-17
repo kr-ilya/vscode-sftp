@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "preserve",
     "target": "es2022",
     "lib": ["es2022"],
     "outDir": "out",
