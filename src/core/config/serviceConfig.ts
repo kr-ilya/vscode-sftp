@@ -17,6 +17,19 @@ import type { FileServiceConfig } from '../fileService';
 
 const DEFAULT_SSHCONFIG_FILE = '~/.ssh/config';
 
+/**
+ * Never uploaded, whatever the configuration says.
+ *
+ * `ignore` replaces the default list rather than extending it, so a project
+ * that writes its own and does not think to include `.vscode` publishes its own
+ * connection settings -- host, user, remote path, and a password if one was
+ * written there instead of being kept in secret storage. Nobody means to do
+ * that, and no legitimate purpose is served by allowing it, so this is appended
+ * last, where gitignore semantics make it win over anything that came before,
+ * a negation included.
+ */
+const ALWAYS_IGNORED = ['.vscode/sftp.json'];
+
 export function filesIgnoredFromConfig(config: FileServiceConfig): string[] {
   const cache = fileContentCache;
   const ignore: string[] =
@@ -24,7 +37,7 @@ export function filesIgnoredFromConfig(config: FileServiceConfig): string[] {
 
   const ignoreFile = config.ignoreFile;
   if (!ignoreFile) {
-    return ignore;
+    return ignore.concat(ALWAYS_IGNORED);
   }
 
   let ignoreFromFile;
@@ -39,7 +52,7 @@ export function filesIgnoredFromConfig(config: FileServiceConfig): string[] {
     );
   }
 
-  return ignore.concat(ignoreFromFile.split(/\r?\n/g));
+  return ignore.concat(ignoreFromFile.split(/\r?\n/g), ALWAYS_IGNORED);
 }
 
 /**
