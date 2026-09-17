@@ -39,11 +39,30 @@ export function setRemoteFsHost(next: RemoteFsHost): void {
   host = next;
 }
 
-function hashOption(opiton) {
-  return Object.keys(opiton)
-    .map(key => opiton[key])
-    .join('');
+/**
+ * The identity of a connection, as a string that cannot be confused with
+ * another's.
+ *
+ * It used to be the option *values* concatenated: no keys, no separator, and
+ * every nested object rendered as `[object Object]`. So two configurations that
+ * differed only in `hop` -- two different jump hosts, two different sets of
+ * credentials -- produced the same identity and shared one connection, which
+ * means the second one wrote its files through the first one's tunnel. The
+ * missing separator had its own version of the same fault: `example.com` on
+ * port 22 and `example.com2` on port 2 collided.
+ *
+ * Sorted, keyed, JSON-encoded and NUL-separated: each part is unambiguous, and
+ * the order the keys happen to be in does not change the answer.
+ */
+function hashOption(option: Record<string, unknown>): string {
+  return Object.keys(option)
+    .sort()
+    .map(key => `${key}=${JSON.stringify(option[key]) ?? 'undefined'}`)
+    .join('\u0000');
 }
+
+/** Exposed for the tests that pin what counts as the same connection. */
+export const __testing = { hashOption };
 
 class KeepAliveRemoteFs {
   private isValid: boolean = false;

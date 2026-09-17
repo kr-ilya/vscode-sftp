@@ -61,6 +61,17 @@ const NOT_CONNECTION_SETTINGS = new Set([
   'concurrency',
   'syncOption',
   'sshConfigPath',
+  // Below: settings that reach this point but describe what to do rather than
+  // where to connect. They were being folded into the connection's identity,
+  // which at best made the key longer than it needed to be and at worst -- for
+  // the three object-valued ones -- rendered as "[object Object]" and made
+  // genuinely different connections look the same.
+  'context',
+  'profiles',
+  'defaultProfile',
+  'remoteExplorer',
+  'filePerm',
+  'dirPerm',
 ]);
 
 export function getHostInfo(config) {
