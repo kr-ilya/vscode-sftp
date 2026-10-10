@@ -18,6 +18,27 @@ import { getWatchOutput } from './output';
 import { walkFiles } from './walk';
 import { isSubpathOf } from '../../core/util/paths';
 import { DestinationDeclinedError } from '../../helper';
+import { showErrorMessage } from '../../host';
+import app from '../../app';
+import StatusBarItem from '../../ui/statusBarItem';
+import * as output from '../../ui/output';
+
+/**
+ * Makes a batch's failures visible.
+ *
+ * A failed transfer is otherwise only a line in the log, and the file stays
+ * unsent until it is saved again. One notification per batch, not per file: a
+ * pull that fails on two hundred files is one problem.
+ */
+function reportFailures(paths: string[]): void {
+  app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+
+  const what = paths.length === 1 ? paths[0] : `${paths.length} files`;
+  const message = `SyncX: could not sync ${what}. It stays unsent until it changes again.`;
+  void showErrorMessage(message, 'Detail').then(result => {
+    if (result === 'Detail') output.show();
+  });
+}
 
 /**
  * The editor-facing half of change detection.
@@ -187,6 +208,7 @@ async function createTree(
     }
     persistent.markDirty();
 
+    const failed: string[] = [];
     await executeOutcomes(outcomes, {
       concurrency: watcherConcurrency,
       ensureDirectory: path => createRemoteFolder(vscode.Uri.file(path)),
@@ -208,9 +230,12 @@ async function createTree(
           return;
         }
         logger.error(error as Error, `[watch] ${outcome.decision.action} ${outcome.path}`);
+        failed.push(outcome.path);
       },
       onSettled: () => persistent.markDirty(),
     });
+
+    if (failed.length > 0) reportFailures(failed);
   }
 
   const watcher = vscode.workspace.createFileSystemWatcher(
