@@ -5,6 +5,12 @@ Versions are `YY.M.N`: the year, the month, and which release that month it is.
 of October. The month is never zero-padded -- `26.09.0` is not a valid version
 and cannot be published.
 
+## 26.10.0 – 2026-10-10
+
+### Fixed
+
+- **A failed upload by the watcher is no longer silent.** It used to be a line in the log, and the file stayed unsent until it changed again, so a handshake timeout at the wrong moment left a file the user believed was on the server and was not. A failed batch now puts the status bar in its error state and raises one notification, naming the file or counting them, with a Detail button that opens the log. An upload the user declined is still not reported as a failure.
+
 ## 26.9.2 — 2026-09-17
 
 ### Added
