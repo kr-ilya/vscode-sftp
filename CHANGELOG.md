@@ -5,6 +5,12 @@ Versions are `YY.M.N`: the year, the month, and which release that month it is.
 of October. The month is never zero-padded -- `26.09.0` is not a valid version
 and cannot be published.
 
+## 26.11.0 – 2026-11-09
+
+### Fixed
+
+- **An expected SSH host key change can be resolved from the error dialog.** When the conflicting entries are stored by SyncX and apply only to the affected host, **Remove old key from SyncX** clears those entries. On the next connection, SyncX shows the new fingerprint for verification. For entries that require a manual edit, the dialog points to the exact file and line.
+
 ## 26.10.0 – 2026-10-10
 
 ### Fixed
