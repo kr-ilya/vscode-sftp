@@ -75,16 +75,18 @@ describe('a changed host key', () => {
     expect(detail).toContain('rebuilt or reinstalled server');
   });
 
-  test('gives the exact command to clear the old entry', () => {
-    expect(outcome.action === 'refuse' && outcome.detail).toContain('ssh-keygen -R example.com');
+  test('returns the conflicting entry with its source', () => {
+    expect(outcome.action === 'refuse' && outcome.expected).toEqual(
+      known(`example.com ${TYPE} ${B64}`)
+    );
   });
 
-  test('quotes the bracketed form for a non-standard port', () => {
+  test('identifies the conflicting host on a non-standard port', () => {
     const off22 = decideHostKey({
       host: 'example.com', port: 2222, keyType: TYPE, key: OTHER,
       entries: known(`[example.com]:2222 ${TYPE} ${B64}`),
     });
-    expect(off22.action === 'refuse' && off22.detail).toContain("ssh-keygen -R '[example.com]:2222'");
+    expect(off22.action === 'refuse' && off22.title).toContain('example.com:2222');
   });
 });
 
@@ -96,6 +98,7 @@ describe('a revoked key', () => {
     });
     expect(outcome.action).toBe('refuse');
     expect(outcome.action === 'refuse' && outcome.detail).toContain('never acceptable');
+    expect(outcome.action === 'refuse' && outcome.expected).toBeUndefined();
   });
 });
 

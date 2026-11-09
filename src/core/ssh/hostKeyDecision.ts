@@ -14,7 +14,7 @@ export type HostKeyOutcome =
   /** Ask, and remember the answer if the user agrees. */
   | { action: 'ask'; title: string; detail: string }
   /** Refuse. Never offered as a question. */
-  | { action: 'refuse'; title: string; detail: string };
+  | { action: 'refuse'; title: string; detail: string; expected?: readonly KnownHostEntry[] };
 
 export interface HostKeyRequest {
   host: string;
@@ -65,6 +65,7 @@ export function decideHostKey(request: HostKeyRequest): HostKeyOutcome {
     case 'changed':
       return {
         action: 'refuse',
+        expected: verdict.expected,
         title: `HOST KEY CHANGED for ${where}. Connection refused.`,
         detail:
           'The server presented a key that does not match the one on record.\n\n' +
@@ -73,10 +74,7 @@ export function decideHostKey(request: HostKeyRequest): HostKeyOutcome {
             .map(e => `  expected: ${fingerprint(e.key)}  (${e.source}:${e.line})`)
             .join('\n') +
           '\n\nThis is what a machine-in-the-middle attack looks like. It is also ' +
-          'what a rebuilt or reinstalled server looks like.\n\n' +
-          'If you know the key legitimately changed, remove the old entry:\n' +
-          `    ssh-keygen -R ${where.includes(':') ? `'[${host}]:${port}'` : host}\n` +
-          'then connect once with ssh to record the new one.',
+          'what a rebuilt or reinstalled server looks like.',
       };
 
     case 'revoked':

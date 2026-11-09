@@ -41,13 +41,15 @@ The usual answers are: the path matches an `ignore` rule, the content is identic
 
 A server you have connected to before is presenting a different key. SyncX refuses rather than asking, because that is what a machine-in-the-middle looks like.
 
-If the change is expected — the server was rebuilt, or its keys were rotated — remove the old entry and connect again:
+If you expected the change after a server rebuild or key rotation, use **Remove old key from SyncX** when the dialog offers it. Connect again and compare the new fingerprint with the server's before accepting it.
+
+The dialog lists the file and line for each conflicting key. For an ordinary entry in an OpenSSH file, use that file's path with `ssh-keygen`. Use `[example.com]:2222` for a non-default port such as 2222.
 
 ```sh
-ssh-keygen -R example.com
+ssh-keygen -R example.com -f "$HOME/.ssh/known_hosts"
 ```
 
-If you accepted the key through SyncX rather than through `ssh`, its own store is `known_hosts` inside the extension's global storage directory; delete the line for that host there.
+If a line covers several hosts, edit it so the other hosts keep their keys.
 
 If you did not expect the change, do not proceed until you know why.
 
